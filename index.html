@@ -608,11 +608,11 @@
 // market: 'tse' = 上市, 'otc' = 上櫃
 // Yahoo symbol: '.TW' = 上市, '.TWO' = 上櫃
 const DEFS = [
-    { code:'00713', name:'元大台灣高息低波', market:'tse', isNew:false, initShares:30000, initLoan:955000,  initRatio:1.6595, minPrice:30,  maxPrice:120 },
-    { code:'00927', name:'群益半導體收益',   market:'tse', isNew:false, initShares:51000, initLoan:900381,  initRatio:1.6896, minPrice:10,  maxPrice:60  },
-    { code:'00858', name:'永豐美國500大',    market:'otc', isNew:false, initShares:36000, initLoan:0,       initRatio:null,   minPrice:10,  maxPrice:60, initPrice:30.00 },
-    { code:'00980A',name:'野村臺灣優選',     market:'tse', isNew:true,  initShares:0,     initLoan:0,       initRatio:null,   minPrice:5,   maxPrice:30, initPrice:10.00 },
-    { code:'00981A',name:'主動統一台股增長', market:'tse', isNew:true,  initShares:0,     initLoan:0,       initRatio:null,   minPrice:5,   maxPrice:30, initPrice:10.00 },
+    { code:'00713', name:'元大台灣高息低波', market:'tse', isNew:false, initShares:0, initLoan:0, initRatio:null, minPrice:30, maxPrice:120, initPrice:60.00 },
+    { code:'00927', name:'群益半導體收益',   market:'tse', isNew:false, initShares:0, initLoan:0, initRatio:null, minPrice:10, maxPrice:60,  initPrice:20.00 },
+    { code:'00858', name:'永豐美國500大',    market:'otc', isNew:false, initShares:0, initLoan:0, initRatio:null, minPrice:10, maxPrice:60,  initPrice:30.00 },
+    { code:'00980A',name:'野村臺灣優選',     market:'tse', isNew:true,  initShares:0, initLoan:0, initRatio:null, minPrice:5,  maxPrice:30,  initPrice:10.00 },
+    { code:'00981A',name:'主動統一台股增長', market:'tse', isNew:true,  initShares:0, initLoan:0, initRatio:null, minPrice:5,  maxPrice:30,  initPrice:10.00 },
 ];
 
 // 反推初始股價
@@ -780,7 +780,8 @@ function buildCards() {
                         <span class="field-label">持有股數</span>
                         <div style="display:flex;align-items:center;gap:6px;">
                             <input type="number" class="num-input sm" id="shares-${d.code}"
-                                value="${d.initShares}" min="0" step="1000"
+                                value="${d.initShares > 0 ? d.initShares : ''}" placeholder="股數"
+                                min="0" step="1000"
                                 oninput="onSharesInput('${d.code}')">
                             <span style="font-size:12px;color:var(--text-muted)">股</span>
                         </div>
@@ -789,7 +790,8 @@ function buildCards() {
                         <span class="field-label">融資借款</span>
                         <div style="display:flex;align-items:center;gap:6px;">
                             <input type="number" class="num-input lg" id="loan-${d.code}"
-                                value="${d.initLoan}" min="0" step="10000"
+                                value="${d.initLoan > 0 ? d.initLoan : ''}" placeholder="借款金額"
+                                min="0" step="10000"
                                 oninput="onLoanInput('${d.code}')">
                             <span style="font-size:12px;color:var(--text-muted)">元</span>
                         </div>
@@ -1011,12 +1013,7 @@ async function fetchAllPricesMargin() {
     const orig = btn.innerHTML;
     btn.innerHTML = '<span class="spinner"></span> 抓取中...';
 
-    const codes = DEFS.filter(d => state[d.code].shares > 0 || !d.isNew).map(d => d.code);
-    if (codes.length === 0) {
-        btn.disabled = false; btn.innerHTML = orig;
-        showBanner('沒有可抓取的股票', 'warning');
-        return;
-    }
+    const codes = DEFS.map(d => d.code);
     codes.forEach(c => {
         const fb = document.getElementById(`fetchbtn-${c}`);
         fb.disabled = true; fb.innerHTML = '<span class="spinner"></span>';
@@ -1149,7 +1146,7 @@ function calcMargin() {
 }
 
 // ── 儲存 / 還原 (維持率頁) ──────────────────────────────────
-const STORAGE_KEY = 'margin_sim_v6';
+const STORAGE_KEY = 'margin_sim_v7';
 
 function saveAll() {
     const data = { interest: parseFloat(document.getElementById('total-interest').value) || 0 };
@@ -1163,7 +1160,7 @@ function saveAll() {
             priceMode: state[d.code].priceMode,
         };
     });
-    ['margin_sim_v1','margin_sim_v2','margin_sim_v3','margin_sim_v4','margin_sim_v5'].forEach(k => localStorage.removeItem(k));
+    ['margin_sim_v1','margin_sim_v2','margin_sim_v3','margin_sim_v4','margin_sim_v5','margin_sim_v6'].forEach(k => localStorage.removeItem(k));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 
     const btn = document.getElementById('btn-save');
@@ -1203,8 +1200,8 @@ function resetAll() {
         state[d.code] = { price: d.initPrice, shares: d.initShares, loan: d.initLoan, included: true, priceMode: 'manual' };
         document.getElementById(`price-${d.code}`).value    = d.initPrice.toFixed(2);
         document.getElementById(`slider-${d.code}`).value   = d.initPrice;
-        document.getElementById(`shares-${d.code}`).value   = d.initShares;
-        document.getElementById(`loan-${d.code}`).value     = d.initLoan;
+        document.getElementById(`shares-${d.code}`).value   = d.initShares > 0 ? d.initShares : '';
+        document.getElementById(`loan-${d.code}`).value     = d.initLoan   > 0 ? d.initLoan   : '';
         document.getElementById(`curprice-${d.code}`).value = '';
         document.getElementById(`curprice-meta-${d.code}`).textContent = '';
         document.getElementById(`curprice-meta-${d.code}`).className   = 'cur-price-meta';
@@ -1457,8 +1454,8 @@ window.onload = () => {
         const s = state[d.code];
         document.getElementById(`price-${d.code}`).value  = s.price.toFixed(2);
         document.getElementById(`slider-${d.code}`).value = Math.max(d.minPrice, Math.min(d.maxPrice, s.price));
-        document.getElementById(`shares-${d.code}`).value = s.shares;
-        document.getElementById(`loan-${d.code}`).value   = s.loan;
+        document.getElementById(`shares-${d.code}`).value = s.shares > 0 ? s.shares : '';
+        document.getElementById(`loan-${d.code}`).value   = s.loan   > 0 ? s.loan   : '';
         applyIncludeUI(d.code);
         applyPriceModeUI(d.code);
         if (hasSaved) {
