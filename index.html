@@ -297,18 +297,6 @@
         .price-btn:hover { background: var(--border); }
         .price-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-        input[type="range"] {
-            -webkit-appearance: none; width: 100%; height: 6px;
-            background: var(--bg2); border-radius: 99px; outline: none; cursor: pointer;
-        }
-        input[type="range"]:disabled { cursor: not-allowed; opacity: 0.5; }
-        input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none; width: 17px; height: 17px; border-radius: 50%;
-            background: var(--accent); border: 2px solid #fff;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-        }
-        .slider-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); margin-top: 2px; }
-
         .sim-disabled-hint {
             font-size: 11px; color: var(--text-dim);
             font-style: italic; text-align: center;
@@ -914,7 +902,7 @@ function rebuildAll() {
         const s = state[d.code];
         if (!s) return;
         document.getElementById(`price-${d.code}`).value  = s.price.toFixed(2);
-        document.getElementById(`slider-${d.code}`).value = Math.max(d.minPrice, Math.min(d.maxPrice, s.price));
+        setSliderVal(d.code, Math.max(d.minPrice, Math.min(d.maxPrice, s.price)));
         document.getElementById(`shares-${d.code}`).value = s.shares > 0 ? s.shares : '';
         document.getElementById(`loan-${d.code}`).value   = s.loan   > 0 ? s.loan   : '';
         applyIncludeUI(d.code);
@@ -951,6 +939,16 @@ document.addEventListener('keydown', (e) => {
 
 // 立即載入自訂股票(必須在 state、plData 初始化之前)
 loadCustomStocks();
+
+// Helper:安全地操作滑桿(已移除滑桿後仍保留為相容接口)
+function setSliderVal(code, val) {
+    const el = document.getElementById(`slider-${code}`);
+    if (el) el.value = val;
+}
+function setSliderDisabled(code, disabled) {
+    const el = document.getElementById(`slider-${code}`);
+    if (el) el.disabled = disabled;
+}
 
 // ════════════════════════════════════════════════════════════
 //  Tab 切換
@@ -1169,17 +1167,10 @@ function buildCards() {
                             <div class="price-control">
                                 <button class="price-btn" id="dec-${d.code}" onclick="adjustPrice('${d.code}',-0.5)">−</button>
                                 <input type="number" class="num-input sm" id="price-${d.code}"
-                                    value="${ip}" min="${d.minPrice}" max="${d.maxPrice}" step="0.01"
+                                    value="${ip}" min="0" step="0.01"
                                     oninput="onPriceInput('${d.code}')">
                                 <button class="price-btn" id="inc-${d.code}" onclick="adjustPrice('${d.code}',+0.5)">＋</button>
                             </div>
-                        </div>
-                        <input type="range" id="slider-${d.code}"
-                            min="${d.minPrice}" max="${d.maxPrice}" step="0.01" value="${ip}"
-                            oninput="onSliderInput('${d.code}')">
-                        <div class="slider-labels">
-                            <span>${d.minPrice}</span>
-                            <span>${d.maxPrice}</span>
                         </div>
                     </div>
                 </div>
@@ -1226,7 +1217,7 @@ function applyPriceModeUI(code) {
     // 跟現價時:鎖定 input、滑桿、+/-
     const disabled = (mode === 'follow');
     document.getElementById(`price-${code}`).disabled  = disabled;
-    document.getElementById(`slider-${code}`).disabled = disabled;
+    setSliderDisabled(code, disabled);
     document.getElementById(`dec-${code}`).disabled    = disabled;
     document.getElementById(`inc-${code}`).disabled    = disabled;
 }
@@ -1238,7 +1229,7 @@ function syncSimPriceToCurrent(code) {
     const v = Math.max(d.minPrice, Math.min(d.maxPrice, cur));
     state[code].price = cur;  // 實際計算用真實現價,不限制
     document.getElementById(`price-${code}`).value  = cur.toFixed(2);
-    document.getElementById(`slider-${code}`).value = v;
+    setSliderVal(code, v);
 }
 
 // ── 輸入事件 ────────────────────────────────────────────────
@@ -1247,24 +1238,17 @@ function onPriceInput(code) {
     const val = parseFloat(document.getElementById(`price-${code}`).value);
     if (isNaN(val)) return;
     state[code].price = val;
-    document.getElementById(`slider-${code}`).value = val;
-    calcMargin();
-}
-function onSliderInput(code) {
-    if (state[code].priceMode === 'follow') return;
-    const val = parseFloat(document.getElementById(`slider-${code}`).value);
-    state[code].price = val;
-    document.getElementById(`price-${code}`).value = val.toFixed(2);
+    setSliderVal(code, val);
     calcMargin();
 }
 function adjustPrice(code, delta) {
     if (state[code].priceMode === 'follow') return;
     const d = DEFS.find(x => x.code === code);
     let val = +(parseFloat(document.getElementById(`price-${code}`).value) + delta).toFixed(2);
-    val     = Math.max(d.minPrice, Math.min(d.maxPrice, val));
+    if (val < 0) val = 0;
     state[code].price = val;
     document.getElementById(`price-${code}`).value  = val.toFixed(2);
-    document.getElementById(`slider-${code}`).value = val;
+    setSliderVal(code, val);
     calcMargin();
 }
 function onSharesInput(code) {
@@ -1531,7 +1515,7 @@ function resetAll() {
     DEFS.forEach(d => {
         state[d.code] = { price: d.initPrice, shares: d.initShares, loan: d.initLoan, included: true, priceMode: 'manual' };
         document.getElementById(`price-${d.code}`).value    = d.initPrice.toFixed(2);
-        document.getElementById(`slider-${d.code}`).value   = d.initPrice;
+        setSliderVal(d.code, d.initPrice);
         document.getElementById(`shares-${d.code}`).value   = d.initShares > 0 ? d.initShares : '';
         document.getElementById(`loan-${d.code}`).value     = d.initLoan   > 0 ? d.initLoan   : '';
         document.getElementById(`curprice-${d.code}`).value = '';
@@ -1785,7 +1769,7 @@ window.onload = () => {
     DEFS.forEach(d => {
         const s = state[d.code];
         document.getElementById(`price-${d.code}`).value  = s.price.toFixed(2);
-        document.getElementById(`slider-${d.code}`).value = Math.max(d.minPrice, Math.min(d.maxPrice, s.price));
+        setSliderVal(d.code, Math.max(d.minPrice, Math.min(d.maxPrice, s.price)));
         document.getElementById(`shares-${d.code}`).value = s.shares > 0 ? s.shares : '';
         document.getElementById(`loan-${d.code}`).value   = s.loan   > 0 ? s.loan   : '';
         applyIncludeUI(d.code);
