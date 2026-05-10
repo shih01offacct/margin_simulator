@@ -631,80 +631,78 @@ function switchTab(name) {
 }
 
 // ════════════════════════════════════════════════════════════
-//  共用:股價抓取(TWSE → Yahoo → CORS 提示)
+//  共用:股價抓取(Yahoo Finance + 三代理 fallback)
+//  邏輯:沿用損益表已驗證可行的方式 ── 單檔查詢 + 多代理輪詢
+//  ─ 直接打 query1.finance.yahoo.com(部分網路環境可直連)
+//  ─ 失敗就走 corsproxy.io
+//  ─ 再失敗走 allorigins.win
 // ════════════════════════════════════════════════════════════
-function buildTwseUrl(codes) {
-    const ex_ch = codes.map(c => {
-        const def = DEFS.find(d => d.code === c);
-        const market = def ? def.market : 'tse';
-        return `${market}_${c}.tw`;
-    }).join('|');
-    return `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${ex_ch}&json=1&delay=0&_=${Date.now()}`;
+function makeProxies(url) {
+    return [
+        url,
+        `https://corsproxy.io/?${encodeURIComponent(url)}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    ];
 }
 
-async function fetchFromTwse(codes) {
-    const url = buildTwseUrl(codes);
-    const res = await fetch(url, { method: 'GET', mode: 'cors' });
-    if (!res.ok) throw new Error(`TWSE HTTP ${res.status}`);
-    const data = await res.json();
-    if (!data || !Array.isArray(data.msgArray)) throw new Error('TWSE 回傳格式錯誤');
-
-    const out = {};
-    data.msgArray.forEach(item => {
-        const code = item.c;
-        const z    = parseFloat(item.z);
-        const y    = parseFloat(item.y);
-        let price, isClose;
-        if (!isNaN(z) && z > 0) { price = z; isClose = false; }
-        else if (!isNaN(y) && y > 0) { price = y; isClose = true; }
-        else return;
-        out[code] = { price, isClose, time: item.t || '', date: item.d || '', source: 'TWSE' };
-    });
-    return out;
+function getYahooSymbol(code) {
+    const def = DEFS.find(d => d.code === code);
+    const suffix = (def && def.market === 'otc') ? '.TWO' : '.TW';
+    return `${code}${suffix}`;
 }
 
-async function fetchFromYahoo(codes) {
-    // Yahoo 用 .TW (上市) 或 .TWO (上櫃)
-    const symbolMap = {};
-    const symbols = codes.map(c => {
-        const def = DEFS.find(d => d.code === c);
-        const suffix = (def && def.market === 'otc') ? '.TWO' : '.TW';
-        const sym = `${c}${suffix}`;
-        symbolMap[sym] = c;
-        return sym;
-    }).join(',');
+// 抓單支股票(回傳 { price, isClose, source } 或 null)
+async function fetchYahooOne(code) {
+    const symbol = getYahooSymbol(code);
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+    const proxyLabels = ['直連', 'corsproxy.io', 'allorigins.win'];
 
-    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}`;
-    const res = await fetch(url, { method: 'GET', mode: 'cors' });
-    if (!res.ok) throw new Error(`Yahoo HTTP ${res.status}`);
-    const data = await res.json();
-    const list = data?.quoteResponse?.result;
-    if (!Array.isArray(list)) throw new Error('Yahoo 回傳格式錯誤');
+    for (let i = 0; i < 3; i++) {
+        const proxyUrl = makeProxies(url)[i];
+        try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 10000);
+            const res = await fetch(proxyUrl, { signal: ctrl.signal });
+            clearTimeout(timer);
+            if (!res.ok) continue;
 
-    const out = {};
-    list.forEach(item => {
-        const code = symbolMap[item.symbol] || item.symbol.replace(/\.TWO?$/, '');
-        const p    = item.regularMarketPrice;
-        if (typeof p !== 'number') return;
-        const isClose = item.marketState !== 'REGULAR';
-        out[code] = { price: p, isClose, time: '', date: '', source: 'Yahoo' };
-    });
-    return out;
+            const json = await res.json();
+            const meta = json?.chart?.result?.[0]?.meta;
+            if (!meta) continue;
+
+            const price = meta.regularMarketPrice;
+            if (price == null) continue;
+
+            // marketState: 'REGULAR' 盤中 / 其他都當收盤(含 PRE/POST/CLOSED)
+            const isClose = meta.marketState !== 'REGULAR';
+            return {
+                price: parseFloat(price),
+                isClose,
+                source: `Yahoo(${proxyLabels[i]})`,
+                time: '', date: '',
+            };
+        } catch (e) {
+            console.warn(`[Yahoo ${code}] ${proxyLabels[i]} 失敗:`, e.message);
+        }
+    }
+    return null;
 }
 
+// 統一入口:同時發出多支查詢
 async function fetchPrices(codes) {
-    let lastError = null;
-    try {
-        const result = await fetchFromTwse(codes);
-        if (Object.keys(result).length > 0) return { result, source: 'TWSE' };
-    } catch (e) { lastError = e; console.warn('[TWSE 抓取失敗]', e); }
-
-    try {
-        const result = await fetchFromYahoo(codes);
-        if (Object.keys(result).length > 0) return { result, source: 'Yahoo' };
-    } catch (e) { lastError = e; console.warn('[Yahoo 抓取失敗]', e); }
-
-    throw lastError || new Error('兩個來源都失敗');
+    const results = await Promise.all(codes.map(c => fetchYahooOne(c)));
+    const out = {};
+    let firstSource = null;
+    codes.forEach((c, i) => {
+        if (results[i]) {
+            out[c] = results[i];
+            if (!firstSource) firstSource = results[i].source;
+        }
+    });
+    if (Object.keys(out).length === 0) {
+        throw new Error('全部抓取失敗');
+    }
+    return { result: out, source: firstSource || 'Yahoo' };
 }
 
 // Banner
@@ -720,10 +718,8 @@ function showBanner(text, level = 'info') {
 function hideBanner() { document.getElementById('fetch-banner').classList.add('hidden'); }
 function showCorsHint() {
     showBanner(
-        `兩個資料來源都失敗,可能是 CORS 限制。建議安裝 ` +
-        `<a href="https://chrome.google.com/webstore/detail/cors-unblock/lfhmikememgdcahcdlaciloancbhjino" target="_blank">CORS Unblock</a> ` +
-        `(Chrome) 或 <a href="https://addons.mozilla.org/firefox/addon/cors-everywhere/" target="_blank">CORS Everywhere</a> (Firefox),` +
-        `啟用後重新整理頁面再試。`,
+        `所有代理伺服器都無法連線。可能原因:網路不穩、Yahoo Finance 暫時無回應、或代理伺服器當機。` +
+        `請稍後再試,或手動輸入股價。`,
         'danger'
     );
 }
