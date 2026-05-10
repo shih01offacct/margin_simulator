@@ -355,6 +355,105 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        /* ──── Modal (新增股票彈窗) ──── */
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(46, 42, 34, 0.45);
+            display: none; align-items: center; justify-content: center;
+            z-index: 1000; padding: 20px;
+            animation: fadeIn 0.15s;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--surface); border: 1.5px solid var(--border);
+            border-radius: var(--radius); width: 100%; max-width: 460px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+            animation: fadeIn 0.2s;
+        }
+        .modal-header {
+            padding: 16px 22px; border-bottom: 1.5px solid var(--border-soft);
+            display: flex; align-items: center; justify-content: space-between;
+            background: var(--surface2);
+        }
+        .modal-title { font-size: 15px; font-weight: 700; color: var(--text); }
+        .modal-close {
+            background: transparent; border: none; cursor: pointer;
+            font-size: 18px; color: var(--text-muted); padding: 4px 8px;
+            border-radius: 5px; transition: all 0.15s;
+        }
+        .modal-close:hover { background: var(--bg2); color: var(--text); }
+
+        .modal-body { padding: 20px 22px; display: flex; flex-direction: column; gap: 16px; }
+        .modal-field {
+            display: flex; flex-direction: column; gap: 6px;
+        }
+        .modal-field label {
+            font-size: 12px; color: var(--text-muted);
+            font-weight: 500; letter-spacing: 0.3px;
+        }
+        .modal-field input[type="text"],
+        .modal-field input[type="number"] {
+            padding: 8px 12px;
+            background: var(--bg); border: 1.5px solid var(--border);
+            border-radius: 6px; color: var(--text);
+            font-family: 'Noto Sans TC', sans-serif; font-size: 14px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .modal-field input[type="text"]:focus,
+        .modal-field input[type="number"]:focus {
+            outline: none; border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(92,122,78,0.15);
+        }
+        .modal-field input.error { border-color: var(--danger); }
+        .modal-field .field-hint {
+            font-size: 11px; color: var(--text-dim); margin-top: 1px;
+        }
+        .modal-field .field-error {
+            font-size: 12px; color: var(--danger); margin-top: 2px;
+        }
+
+        .market-radio { display: flex; gap: 0; background: var(--bg2); border-radius: 6px; padding: 3px; border: 1px solid var(--border-soft); }
+        .market-radio label {
+            flex: 1; padding: 7px 12px; text-align: center;
+            font-size: 13px; cursor: pointer; border-radius: 4px;
+            color: var(--text-muted); transition: all 0.15s;
+            margin: 0;
+        }
+        .market-radio label:hover { color: var(--text); }
+        .market-radio input { display: none; }
+        .market-radio input:checked + label {
+            background: var(--surface); color: var(--accent);
+            font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+        }
+
+        .price-range-row { display: flex; gap: 10px; }
+        .price-range-row .modal-field { flex: 1; }
+
+        .modal-footer {
+            padding: 14px 22px; border-top: 1.5px solid var(--border-soft);
+            display: flex; gap: 10px; justify-content: flex-end;
+            background: var(--surface2);
+        }
+
+        /* 刪除按鈕 */
+        .delete-btn {
+            background: transparent; border: 1.5px solid transparent;
+            cursor: pointer; padding: 3px 7px;
+            font-size: 12px; color: var(--text-dim);
+            border-radius: 5px; transition: all 0.15s;
+            margin-top: 4px; align-self: flex-start;
+        }
+        .delete-btn:hover {
+            background: var(--danger-bg); color: var(--danger);
+            border-color: #e6b8b0;
+        }
+        .stock-card.is-custom { border-color: #c8a87a; }
+        .custom-badge {
+            font-size: 11px; background: #fdf6e3; color: var(--warning);
+            border: 1px solid #e6cf99; border-radius: 4px; padding: 2px 7px;
+            margin-top: 3px; display: inline-block;
+        }
+
         /* ──────────────  損益計算  ────────────── */
 
         .pl-summary-grid {
@@ -517,6 +616,7 @@
             <div class="section-title">個股試算</div>
             <div class="btn-group">
                 <button class="btn btn-info" id="btn-fetch-margin" onclick="fetchAllPricesMargin()">🔄 一鍵更新全部股價</button>
+                <button class="btn btn-secondary" onclick="openAddModal()">➕ 新增股票</button>
                 <button class="btn btn-secondary" onclick="toggleAll(true)">☑ 全選</button>
                 <button class="btn btn-secondary" onclick="toggleAll(false)">☐ 全不選</button>
                 <button class="btn btn-primary" id="btn-save" onclick="saveAll()">💾 儲存目前數值</button>
@@ -601,18 +701,68 @@
 
 </div>
 
+<!-- ─────────  新增股票 Modal  ───────── -->
+<div class="modal-overlay" id="add-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title">➕ 新增股票</div>
+            <button class="modal-close" onclick="closeAddModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="modal-field">
+                <label>股票代號 <span style="color:var(--danger)">*</span></label>
+                <input type="text" id="new-code" placeholder="例:00929 或 2330" maxlength="10" autocomplete="off">
+                <div class="field-hint">英數字,不含空格(例:0050、2330、00929、00940)</div>
+                <div class="field-error" id="err-code" style="display:none;"></div>
+            </div>
+            <div class="modal-field">
+                <label>股票名稱 <span style="color:var(--danger)">*</span></label>
+                <input type="text" id="new-name" placeholder="例:復華台灣科技優息" maxlength="20" autocomplete="off">
+                <div class="field-error" id="err-name" style="display:none;"></div>
+            </div>
+            <div class="modal-field">
+                <label>市場別</label>
+                <div class="market-radio">
+                    <input type="radio" name="new-market" id="market-tse" value="tse" checked>
+                    <label for="market-tse">📈 上市(.TW)</label>
+                    <input type="radio" name="new-market" id="market-otc" value="otc">
+                    <label for="market-otc">📊 上櫃(.TWO)</label>
+                </div>
+                <div class="field-hint">不確定可先選上市,Yahoo 抓取失敗再切上櫃試試</div>
+            </div>
+            <div class="price-range-row">
+                <div class="modal-field">
+                    <label>滑桿最低價</label>
+                    <input type="number" id="new-min" value="5" min="0" step="0.5">
+                </div>
+                <div class="modal-field">
+                    <label>滑桿最高價</label>
+                    <input type="number" id="new-max" value="50" min="0" step="0.5">
+                </div>
+            </div>
+            <div class="field-hint" style="margin-top:-4px;">用於模擬股價滑桿範圍,新增後仍可手動修改</div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeAddModal()">取消</button>
+            <button class="btn btn-primary" onclick="confirmAddStock()">確認新增</button>
+        </div>
+    </div>
+</div>
+
 <script>
 // ════════════════════════════════════════════════════════════
 //  共用:股票定義
 // ════════════════════════════════════════════════════════════
 // market: 'tse' = 上市, 'otc' = 上櫃
 // Yahoo symbol: '.TW' = 上市, '.TWO' = 上櫃
-const DEFS = [
-    { code:'00713', name:'元大台灣高息低波', market:'tse', isNew:false, initShares:0, initLoan:0, initRatio:null, minPrice:30, maxPrice:120, initPrice:60.00 },
-    { code:'00927', name:'群益半導體收益',   market:'tse', isNew:false, initShares:0, initLoan:0, initRatio:null, minPrice:10, maxPrice:60,  initPrice:20.00 },
-    { code:'00858', name:'永豐美國500大',    market:'otc', isNew:false, initShares:0, initLoan:0, initRatio:null, minPrice:10, maxPrice:60,  initPrice:30.00 },
-    { code:'00980A',name:'野村臺灣優選',     market:'tse', isNew:true,  initShares:0, initLoan:0, initRatio:null, minPrice:5,  maxPrice:30,  initPrice:10.00 },
-    { code:'00981A',name:'主動統一台股增長', market:'tse', isNew:true,  initShares:0, initLoan:0, initRatio:null, minPrice:5,  maxPrice:30,  initPrice:10.00 },
+// 內建 5 檔(isBuiltin=true,不能刪除)
+// 使用者自訂的會在 loadCustomStocks() 時 push 進來(isBuiltin=false)
+let DEFS = [
+    { code:'00713', name:'元大台灣高息低波', market:'tse', isNew:false, isBuiltin:true,  initShares:0, initLoan:0, initRatio:null, minPrice:30, maxPrice:120, initPrice:60.00 },
+    { code:'00927', name:'群益半導體收益',   market:'tse', isNew:false, isBuiltin:true,  initShares:0, initLoan:0, initRatio:null, minPrice:10, maxPrice:60,  initPrice:20.00 },
+    { code:'00858', name:'永豐美國500大',    market:'otc', isNew:false, isBuiltin:true,  initShares:0, initLoan:0, initRatio:null, minPrice:10, maxPrice:60,  initPrice:30.00 },
+    { code:'00980A',name:'野村臺灣優選',     market:'tse', isNew:true,  isBuiltin:true,  initShares:0, initLoan:0, initRatio:null, minPrice:5,  maxPrice:30,  initPrice:10.00 },
+    { code:'00981A',name:'主動統一台股增長', market:'tse', isNew:true,  isBuiltin:true,  initShares:0, initLoan:0, initRatio:null, minPrice:5,  maxPrice:30,  initPrice:10.00 },
 ];
 
 // 反推初始股價
@@ -621,6 +771,183 @@ DEFS.forEach(d => {
         d.initPrice = +(d.initLoan * d.initRatio / d.initShares).toFixed(2);
     }
 });
+
+// ════════════════════════════════════════════════════════════
+//  自訂股票管理
+// ════════════════════════════════════════════════════════════
+const CUSTOM_KEY = 'custom_stocks_v1';
+
+function loadCustomStocks() {
+    try {
+        const raw = localStorage.getItem(CUSTOM_KEY);
+        if (!raw) return;
+        const list = JSON.parse(raw);
+        if (!Array.isArray(list)) return;
+        list.forEach(item => {
+            // 避免代號重複
+            if (DEFS.some(d => d.code === item.code)) return;
+            DEFS.push({
+                code:       item.code,
+                name:       item.name || item.code,
+                market:     item.market === 'otc' ? 'otc' : 'tse',
+                isNew:      false,
+                isBuiltin:  false,
+                initShares: 0,
+                initLoan:   0,
+                initRatio:  null,
+                minPrice:   item.minPrice || 5,
+                maxPrice:   item.maxPrice || 50,
+                initPrice:  item.initPrice || ((item.minPrice + item.maxPrice) / 2) || 20,
+            });
+        });
+    } catch(e) {
+        localStorage.removeItem(CUSTOM_KEY);
+    }
+}
+function saveCustomStocks() {
+    const list = DEFS.filter(d => !d.isBuiltin).map(d => ({
+        code: d.code, name: d.name, market: d.market,
+        minPrice: d.minPrice, maxPrice: d.maxPrice, initPrice: d.initPrice,
+    }));
+    localStorage.setItem(CUSTOM_KEY, JSON.stringify(list));
+}
+
+// ── Modal 開關 ──────────────────────────────────────────────
+function openAddModal() {
+    document.getElementById('add-modal').classList.add('active');
+    document.getElementById('new-code').value = '';
+    document.getElementById('new-name').value = '';
+    document.getElementById('market-tse').checked = true;
+    document.getElementById('new-min').value = 5;
+    document.getElementById('new-max').value = 50;
+    clearAddErrors();
+    setTimeout(() => document.getElementById('new-code').focus(), 50);
+}
+function closeAddModal() {
+    document.getElementById('add-modal').classList.remove('active');
+}
+function clearAddErrors() {
+    ['err-code','err-name'].forEach(id => {
+        document.getElementById(id).style.display = 'none';
+    });
+    ['new-code','new-name'].forEach(id => {
+        document.getElementById(id).classList.remove('error');
+    });
+}
+function showAddError(field, msg) {
+    const errEl = document.getElementById(`err-${field}`);
+    errEl.textContent = msg;
+    errEl.style.display = 'block';
+    document.getElementById(`new-${field}`).classList.add('error');
+}
+
+// ── 確認新增 ────────────────────────────────────────────────
+function confirmAddStock() {
+    clearAddErrors();
+    const codeRaw = document.getElementById('new-code').value.trim().toUpperCase();
+    const name    = document.getElementById('new-name').value.trim();
+    const market  = document.querySelector('input[name="new-market"]:checked').value;
+    let minPrice  = parseFloat(document.getElementById('new-min').value);
+    let maxPrice  = parseFloat(document.getElementById('new-max').value);
+
+    // 驗證
+    if (!codeRaw) { showAddError('code', '請輸入股票代號'); return; }
+    if (!/^[0-9A-Z]+$/.test(codeRaw)) {
+        showAddError('code', '代號只能包含英文字母與數字');
+        return;
+    }
+    if (DEFS.some(d => d.code === codeRaw)) {
+        showAddError('code', `${codeRaw} 已存在於清單中`);
+        return;
+    }
+    if (!name) { showAddError('name', '請輸入股票名稱'); return; }
+
+    // 滑桿範圍合理化
+    if (isNaN(minPrice) || minPrice < 0) minPrice = 5;
+    if (isNaN(maxPrice) || maxPrice <= minPrice) maxPrice = minPrice + 20;
+
+    const initPrice = +((minPrice + maxPrice) / 2).toFixed(2);
+
+    const newStock = {
+        code: codeRaw, name, market,
+        isNew: false, isBuiltin: false,
+        initShares: 0, initLoan: 0, initRatio: null,
+        minPrice, maxPrice, initPrice,
+    };
+    DEFS.push(newStock);
+    state[codeRaw] = {
+        price: initPrice, shares: 0, loan: 0,
+        included: true, priceMode: 'manual',
+    };
+    plData[codeRaw] = { shares: 0, cost: 0, price: 0 };
+
+    saveCustomStocks();
+    rebuildAll();
+    closeAddModal();
+
+    showBanner(`已新增 <strong>${codeRaw} ${name}</strong>。可立即點擊該卡片的 🔄 抓取股價。`, 'success');
+}
+
+// ── 刪除 ────────────────────────────────────────────────────
+function deleteStock(code) {
+    const def = DEFS.find(d => d.code === code);
+    if (!def || def.isBuiltin) return;
+    if (!confirm(`確定要刪除 ${code} ${def.name} 嗎?\n(僅刪除此股票,其他資料不受影響)`)) return;
+
+    DEFS = DEFS.filter(d => d.code !== code);
+    delete state[code];
+    delete plData[code];
+
+    saveCustomStocks();
+    rebuildAll();
+    showBanner(`已刪除 ${code}`, 'info');
+}
+
+// ── 全頁重建(新增/刪除股票後呼叫)──────────────────────
+function rebuildAll() {
+    // 維持率頁:重建卡片並還原當前 state
+    buildCards();
+    DEFS.forEach(d => {
+        const s = state[d.code];
+        if (!s) return;
+        document.getElementById(`price-${d.code}`).value  = s.price.toFixed(2);
+        document.getElementById(`slider-${d.code}`).value = Math.max(d.minPrice, Math.min(d.maxPrice, s.price));
+        document.getElementById(`shares-${d.code}`).value = s.shares > 0 ? s.shares : '';
+        document.getElementById(`loan-${d.code}`).value   = s.loan   > 0 ? s.loan   : '';
+        applyIncludeUI(d.code);
+        applyPriceModeUI(d.code);
+    });
+    calcMargin();
+
+    // 損益頁:重建表格並還原當前 plData
+    buildPLTable();
+    DEFS.forEach(d => {
+        const p = plData[d.code];
+        if (!p) return;
+        if (p.shares > 0) document.getElementById(`pl-shares-${d.code}`).value = p.shares;
+        if (p.cost   > 0) document.getElementById(`pl-cost-${d.code}`).value   = p.cost;
+        if (p.price  > 0) document.getElementById(`pl-price-${d.code}`).value  = p.price;
+    });
+    calcPL();
+}
+
+// 點 modal 背景關閉
+document.addEventListener('click', (e) => {
+    const overlay = document.getElementById('add-modal');
+    if (e.target === overlay) closeAddModal();
+});
+// ESC 關閉
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAddModal();
+    // Enter 在 modal 內時送出
+    if (e.key === 'Enter' && document.getElementById('add-modal').classList.contains('active')) {
+        const tag = e.target.tagName;
+        if (tag === 'INPUT') { e.preventDefault(); confirmAddStock(); }
+    }
+});
+
+// 立即載入自訂股票(必須在 state、plData 初始化之前)
+loadCustomStocks();
 
 // ════════════════════════════════════════════════════════════
 //  Tab 切換
@@ -749,9 +1076,10 @@ function buildCards() {
     DEFS.forEach(d => {
         const noLoan = d.initLoan === 0 && !d.isNew;
         const ip = d.initPrice.toFixed(2);
+        const isCustom = !d.isBuiltin;
 
         const card = document.createElement('div');
-        card.className = 'stock-card' + (d.isNew ? ' is-new' : '');
+        card.className = 'stock-card' + (d.isNew ? ' is-new' : '') + (isCustom ? ' is-custom' : '');
         card.id = `card-${d.code}`;
         card.innerHTML = `
             <div class="stock-header">
@@ -762,13 +1090,15 @@ function buildCards() {
                     <div>
                         <div class="stock-code">${d.code}</div>
                         <div class="stock-name">${d.name}</div>
-                        ${d.isNew ? '<span class="new-badge">新增試算</span>' : ''}
+                        ${d.isNew && !isCustom ? '<span class="new-badge">新增試算</span>' : ''}
+                        ${isCustom ? '<span class="custom-badge">自訂</span>' : ''}
                         <span class="excluded-badge" id="excluded-badge-${d.code}" style="display:none;">已排除</span>
                     </div>
                 </div>
-                <div>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
                     <div class="stock-ratio" id="ratio-${d.code}">—</div>
                     <div class="stock-ratio-label" id="ratio-label-${d.code}">${noLoan ? '僅擔保・不計單筆' : '單筆維持率'}</div>
+                    ${isCustom ? `<button class="delete-btn" onclick="deleteStock('${d.code}')" title="刪除此股票">🗑️ 刪除</button>` : ''}
                 </div>
             </div>
 
