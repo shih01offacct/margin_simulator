@@ -1,0 +1,1485 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>融資維持率 & 損益試算工作台</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg:          #f5f0e8;
+            --bg2:         #ede7d9;
+            --surface:     #faf7f2;
+            --surface2:    #f0ebe0;
+            --border:      #d9d0c0;
+            --border-soft: #e8e0d0;
+            --text:        #2e2a22;
+            --text-muted:  #7a7060;
+            --text-dim:    #b0a898;
+            --accent:      #5c7a4e;
+            --accent-light:#eaf2e6;
+            --warning:     #b07d2a;
+            --warning-bg:  #fdf6e3;
+            --danger:      #c0392b;
+            --danger-bg:   #fdf0ee;
+            --info:        #3a6da3;
+            --info-bg:     #eef4fa;
+            --profit:      #c0392b;  /* 台股慣例:紅漲 */
+            --loss:        #27724a;  /* 綠跌 */
+            --radius:      10px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: var(--bg); color: var(--text);
+            min-height: 100vh; padding: 28px 16px;
+        }
+        .page-wrap { max-width: 1100px; margin: 0 auto; }
+
+        /* Header */
+        header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+        .header-icon {
+            width: 46px; height: 46px; background: var(--accent-light);
+            border: 1.5px solid #b8d4ae; border-radius: var(--radius);
+            display: grid; place-items: center; font-size: 22px; flex-shrink: 0;
+        }
+        header h1 { font-size: 21px; font-weight: 700; letter-spacing: -0.2px; }
+        header p  { font-size: 13px; color: var(--text-muted); margin-top: 3px; }
+
+        /* Tab bar */
+        .tab-bar {
+            display: flex; gap: 4px; margin-bottom: 16px;
+            border-bottom: 2px solid var(--border);
+        }
+        .tab {
+            padding: 11px 20px; background: transparent;
+            border: none; border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            font-size: 14px; font-family: 'Noto Sans TC', sans-serif;
+            font-weight: 500; color: var(--text-muted);
+            cursor: pointer; transition: all 0.15s;
+            display: inline-flex; align-items: center; gap: 8px;
+        }
+        .tab:hover { color: var(--text); background: var(--surface2); }
+        .tab.active {
+            color: var(--accent); border-bottom-color: var(--accent);
+            background: var(--surface);
+            font-weight: 700;
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.2s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Fetch banner */
+        .fetch-banner {
+            background: var(--info-bg); border: 1.5px solid #c5d8ed;
+            border-radius: var(--radius); padding: 12px 18px; margin-bottom: 16px;
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            font-size: 13px;
+        }
+        .fetch-banner.hidden { display: none; }
+        .fetch-banner.warning { background: var(--warning-bg); border-color: #e6cf99; color: var(--warning); }
+        .fetch-banner.danger  { background: var(--danger-bg);  border-color: #e6b8b0; color: var(--danger);  }
+        .fetch-banner.success { background: var(--accent-light); border-color: #b8d4ae; color: var(--accent); }
+        .fetch-banner .icon { font-size: 18px; }
+        .fetch-banner a { color: inherit; text-decoration: underline; font-weight: 600; }
+        .fetch-banner .close-btn {
+            margin-left: auto; cursor: pointer; background: transparent;
+            border: none; font-size: 16px; color: inherit; opacity: 0.6;
+        }
+        .fetch-banner .close-btn:hover { opacity: 1; }
+
+        /* ──────────────  維持率試算  ────────────── */
+
+        .overall-card {
+            background: var(--surface); border: 1.5px solid var(--border);
+            border-radius: var(--radius); padding: 22px 26px;
+            margin-bottom: 18px;
+            display: flex; align-items: flex-start; gap: 28px; flex-wrap: wrap;
+        }
+        .overall-label { font-size: 13px; color: var(--text-muted); margin-bottom: 5px; }
+        .overall-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 46px; font-weight: 700; color: var(--accent);
+            line-height: 1; transition: color 0.3s;
+        }
+        .overall-value.warning { color: var(--warning); }
+        .overall-value.danger  { color: var(--danger); }
+
+        .overall-meta {
+            display: flex; flex-direction: column; gap: 7px;
+            font-size: 13px; color: var(--text-muted);
+        }
+        .overall-meta .meta-row { display: flex; align-items: center; gap: 8px; }
+        .overall-meta strong {
+            font-family: 'JetBrains Mono', monospace; color: var(--text);
+            min-width: 110px; text-align: right;
+        }
+        .interest-input {
+            width: 110px; padding: 4px 8px;
+            background: var(--bg); border: 1.5px solid var(--border);
+            border-radius: 6px; color: var(--text);
+            font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right;
+        }
+        .interest-input:focus { outline: none; border-color: var(--accent); }
+
+        .threshold-bar { flex: 1; min-width: 220px; padding-top: 4px; }
+        .threshold-label { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+        .bar-track { height: 10px; background: var(--bg2); border-radius: 99px; }
+        .bar-fill {
+            height: 100%; border-radius: 99px; background: var(--accent);
+            transition: width 0.35s ease, background 0.3s; max-width: 100%;
+        }
+        .bar-markers { position: relative; height: 36px; margin-top: 4px; }
+        .bar-marker {
+            position: absolute; transform: translateX(-50%);
+            font-size: 11px; color: var(--text-dim);
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+            text-align: center; line-height: 1.3; white-space: nowrap;
+        }
+        .bar-marker::before { content:''; width:1px; height:6px; background:var(--text-dim); }
+        .bar-marker.red { color: var(--danger); }
+        .bar-marker.red::before { background: var(--danger); }
+
+        /* Stock grid */
+        .stocks-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+            gap: 14px; margin-bottom: 20px;
+        }
+        .stock-card {
+            background: var(--surface); border: 1.5px solid var(--border);
+            border-radius: var(--radius); overflow: hidden;
+            transition: opacity 0.25s, filter 0.25s;
+        }
+        .stock-card.is-new { border-color: #b8d4ae; }
+        .stock-card.excluded { opacity: 0.55; filter: grayscale(0.6); }
+        .stock-card.excluded .stock-header { background: var(--bg2); }
+
+        .stock-header {
+            padding: 12px 16px; background: var(--surface2);
+            border-bottom: 1.5px solid var(--border-soft);
+            display: flex; justify-content: space-between; align-items: flex-start;
+            gap: 10px;
+        }
+        .stock-title-wrap {
+            display: flex; align-items: flex-start; gap: 10px;
+            flex: 1; min-width: 0;
+        }
+        .include-toggle {
+            display: flex; align-items: center; justify-content: center;
+            width: 22px; height: 22px; flex-shrink: 0; margin-top: 1px;
+            background: var(--surface); border: 1.5px solid var(--border);
+            border-radius: 5px; cursor: pointer; transition: all 0.15s;
+        }
+        .include-toggle:hover { border-color: var(--accent); }
+        .include-toggle.checked { background: var(--accent); border-color: var(--accent); }
+        .include-toggle.checked::after {
+            content: '✓'; color: #fff; font-size: 14px; font-weight: 700; line-height: 1;
+        }
+
+        .stock-code { font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 700; color: var(--accent); }
+        .stock-name { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+        .new-badge {
+            font-size: 11px; background: var(--accent-light); color: var(--accent);
+            border: 1px solid #b8d4ae; border-radius: 4px; padding: 2px 7px;
+            margin-top: 3px; display: inline-block;
+        }
+        .excluded-badge {
+            font-size: 11px; background: var(--bg2); color: var(--text-muted);
+            border: 1px solid var(--border); border-radius: 4px; padding: 2px 7px;
+            margin-top: 3px; display: inline-block;
+        }
+        .stock-ratio {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 22px; font-weight: 700;
+            color: var(--accent); text-align: right; transition: color 0.3s;
+        }
+        .stock-ratio.warning { color: var(--warning); }
+        .stock-ratio.danger  { color: var(--danger); }
+        .stock-ratio.muted   { color: var(--text-dim); font-size: 14px; font-weight: 500; }
+        .stock-ratio-label { font-size: 11px; color: var(--text-muted); text-align: right; margin-top: 2px; }
+
+        .stock-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 11px; }
+
+        .editable-section {
+            background: var(--bg); border: 1px solid var(--border-soft);
+            border-radius: 7px; padding: 10px 12px;
+            display: flex; flex-direction: column; gap: 9px;
+        }
+        .editable-label { font-size: 11px; color: var(--text-dim); letter-spacing: 0.3px; margin-bottom: 1px; }
+
+        .field-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .field-label { font-size: 13px; color: var(--text-muted); white-space: nowrap; }
+        .field-value { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text); }
+
+        .num-input {
+            padding: 6px 8px;
+            background: var(--surface); border: 1.5px solid var(--border);
+            border-radius: 6px; color: var(--text);
+            font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .num-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(92,122,78,0.15); }
+        .num-input.sm  { width: 90px; }
+        .num-input.md  { width: 110px; }
+        .num-input.lg  { width: 140px; }
+        .num-input:disabled {
+            background: var(--bg2); color: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        /* Price section */
+        .price-section {
+            border-top: 1px solid var(--border-soft); padding-top: 10px;
+            display: flex; flex-direction: column; gap: 9px;
+        }
+        .cur-price-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+        .cur-price-input-group { display: flex; align-items: center; gap: 4px; }
+        .cur-price-meta {
+            font-size: 10px; color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+            min-height: 13px; line-height: 1.3;
+        }
+        .cur-price-meta.fresh { color: var(--accent); }
+        .cur-price-meta.error { color: var(--danger); }
+
+        .fetch-btn {
+            background: var(--surface2); border: 1.5px solid var(--border);
+            border-radius: 5px; cursor: pointer;
+            padding: 4px 8px; font-size: 11px;
+            color: var(--text); transition: background 0.15s;
+            white-space: nowrap; flex-shrink: 0;
+            font-family: 'Noto Sans TC', sans-serif;
+        }
+        .fetch-btn:hover { background: var(--border); }
+        .fetch-btn:disabled { opacity: 0.5; cursor: default; }
+
+        /* 股價來源切換 (跟現價 / 手動) */
+        .source-toggle {
+            display: flex; gap: 0;
+            background: var(--bg2); border-radius: 6px;
+            padding: 2px; border: 1px solid var(--border-soft);
+        }
+        .source-opt {
+            flex: 1; padding: 4px 10px;
+            font-size: 11px; font-family: 'Noto Sans TC', sans-serif;
+            background: transparent; border: none; border-radius: 4px;
+            cursor: pointer; color: var(--text-muted);
+            transition: all 0.15s; white-space: nowrap;
+        }
+        .source-opt:hover { color: var(--text); }
+        .source-opt.active {
+            background: var(--surface); color: var(--accent);
+            font-weight: 600;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+        }
+
+        .sim-price-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+        .sim-label-group { display: flex; align-items: center; gap: 8px; }
+
+        .price-diff {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px; font-weight: 600;
+        }
+        .price-diff.up   { color: var(--profit); }
+        .price-diff.down { color: var(--loss); }
+        .price-diff.flat { color: var(--text-muted); }
+
+        .price-control { display: flex; align-items: center; gap: 5px; }
+        .price-btn {
+            width: 26px; height: 26px; background: var(--surface2);
+            border: 1.5px solid var(--border); border-radius: 5px;
+            cursor: pointer; font-size: 15px; display: grid; place-items: center;
+            color: var(--text); transition: background 0.15s; flex-shrink: 0;
+        }
+        .price-btn:hover { background: var(--border); }
+        .price-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        input[type="range"] {
+            -webkit-appearance: none; width: 100%; height: 6px;
+            background: var(--bg2); border-radius: 99px; outline: none; cursor: pointer;
+        }
+        input[type="range"]:disabled { cursor: not-allowed; opacity: 0.5; }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 17px; height: 17px; border-radius: 50%;
+            background: var(--accent); border: 2px solid #fff;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
+        .slider-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+        .sim-disabled-hint {
+            font-size: 11px; color: var(--text-dim);
+            font-style: italic; text-align: center;
+            padding: 8px; background: var(--bg2); border-radius: 6px;
+        }
+
+        .stock-status { font-size: 12px; padding: 6px 10px; border-radius: 6px; text-align: center; font-weight: 500; }
+        .stock-status.ok      { background: var(--accent-light); color: var(--accent); }
+        .stock-status.warning { background: var(--warning-bg); color: var(--warning); }
+        .stock-status.danger  { background: var(--danger-bg); color: var(--danger); }
+        .stock-status.noloan  { background: var(--surface2); color: var(--text-muted); }
+        .stock-status.excluded{ background: var(--bg2); color: var(--text-muted); }
+
+        .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+        .section-title { font-size: 14px; font-weight: 600; color: var(--text-muted); }
+        .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 8px 16px; border: 1.5px solid transparent; border-radius: 7px;
+            font-size: 13px; font-family: 'Noto Sans TC', sans-serif; font-weight: 500;
+            cursor: pointer; transition: all 0.2s; white-space: nowrap;
+        }
+        .btn-primary   { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .btn-primary:hover { background: #4a6840; }
+        .btn-primary:disabled { opacity: 0.6; cursor: default; }
+        .btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border); }
+        .btn-secondary:hover { background: var(--bg2); }
+        .btn-info { background: var(--info); color: #fff; border-color: var(--info); }
+        .btn-info:hover { background: #2d5680; }
+        .btn-info:disabled { opacity: 0.6; cursor: default; }
+
+        .info-panel {
+            background: var(--surface); border: 1.5px solid var(--border);
+            border-radius: var(--radius); padding: 14px 18px;
+            font-size: 13px; color: var(--text-muted); line-height: 1.9;
+        }
+        .info-panel strong { color: var(--text); }
+
+        .spinner {
+            display: inline-block; width: 12px; height: 12px;
+            border: 2px solid var(--border); border-top-color: var(--info);
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ──────────────  損益計算  ────────────── */
+
+        .pl-summary-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px; margin-bottom: 18px;
+        }
+        .pl-card {
+            background: var(--surface); border: 1.5px solid var(--border);
+            border-radius: var(--radius); padding: 16px 20px;
+        }
+        .pl-card-label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; letter-spacing: 0.5px; }
+        .pl-card-value { font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 600; color: var(--text); }
+        .pl-card-value.profit { color: var(--profit); }
+        .pl-card-value.loss   { color: var(--loss); }
+
+        .pl-panel {
+            background: var(--surface); border: 1.5px solid var(--border);
+            border-radius: var(--radius); overflow: hidden;
+            margin-bottom: 16px;
+        }
+        .pl-panel-header {
+            padding: 13px 20px; border-bottom: 1.5px solid var(--border-soft);
+            font-size: 13px; font-weight: 500; color: var(--text-muted);
+            display: flex; align-items: center; gap: 8px; background: var(--surface2);
+        }
+        .pl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        thead th {
+            padding: 11px 12px; text-align: right; color: var(--text-muted);
+            font-size: 12px; font-weight: 500; letter-spacing: 0.3px;
+            border-bottom: 1.5px solid var(--border-soft);
+            background: var(--surface2); white-space: nowrap;
+        }
+        thead th:first-child { text-align: left; }
+        tbody tr { border-bottom: 1px solid var(--border-soft); transition: background 0.15s; }
+        tbody tr:last-child { border-bottom: none; }
+        tbody tr:hover { background: var(--bg2); }
+        td { padding: 12px 12px; text-align: right; white-space: nowrap; }
+        td:first-child { text-align: left; }
+
+        .etf-code { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; color: var(--accent); }
+        .etf-name { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .etf-src  { font-size: 10px; color: var(--text-dim); margin-top: 1px; }
+
+        .table-input {
+            width: 96px; padding: 6px 9px; background: var(--bg);
+            border: 1.5px solid var(--border); border-radius: 6px; color: var(--text);
+            font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .table-input:focus {
+            outline: none; border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(92,122,78,0.15);
+        }
+        .table-input::placeholder { color: var(--text-dim); }
+
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .profit-cell  { color: var(--profit); font-weight: 600; }
+        .loss-cell    { color: var(--loss);   font-weight: 600; }
+        .neutral-cell { color: var(--text-muted); }
+
+        tfoot tr { background: var(--surface2); }
+        tfoot td {
+            padding: 12px 12px; text-align: right; font-weight: 600;
+            border-top: 1.5px solid var(--border);
+            font-family: 'JetBrains Mono', monospace; font-size: 14px;
+        }
+        tfoot td:first-child {
+            text-align: left; font-family: 'Noto Sans TC', sans-serif;
+            font-size: 13px; color: var(--text-muted);
+        }
+
+        .pl-action-bar {
+            display: flex; align-items: center; gap: 12px;
+            padding: 14px 20px; border-top: 1.5px solid var(--border-soft);
+            background: var(--surface2); flex-wrap: wrap;
+        }
+        .pl-status {
+            margin-left: auto; font-size: 13px;
+            display: flex; align-items: center; gap: 7px; color: var(--text-muted);
+        }
+        .pl-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+        .pl-status-dot.ok      { background: var(--accent); }
+        .pl-status-dot.loading { background: var(--warning); animation: pulse 1s infinite; }
+        .pl-status-dot.error   { background: var(--danger); }
+        .pl-status-dot.partial { background: var(--warning); }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.25} }
+
+        .price-meta-cell {
+            font-size: 10px; color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+            margin-top: 2px; line-height: 1.2;
+        }
+        .price-meta-cell.fresh { color: var(--accent); }
+        .price-meta-cell.error { color: var(--danger); }
+    </style>
+</head>
+<body>
+<div class="page-wrap">
+
+    <header>
+        <div class="header-icon">📐</div>
+        <div>
+            <h1>融資維持率 & 損益試算工作台</h1>
+            <p>整合維持率試算與損益計算,自動抓取台股 ETF 即時/收盤行情</p>
+        </div>
+    </header>
+
+    <!-- Tab 切換 -->
+    <div class="tab-bar">
+        <button class="tab active" data-tab="margin" onclick="switchTab('margin')">
+            📐 融資維持率試算
+        </button>
+        <button class="tab" data-tab="pl" onclick="switchTab('pl')">
+            📊 持倉損益計算
+        </button>
+    </div>
+
+    <!-- 抓取狀態 banner (兩頁共用) -->
+    <div class="fetch-banner hidden" id="fetch-banner">
+        <span class="icon" id="banner-icon">ℹ️</span>
+        <span id="banner-text"></span>
+        <button class="close-btn" onclick="hideBanner()">✕</button>
+    </div>
+
+    <!-- ─────────  Tab 1: 維持率試算  ───────── -->
+    <div class="tab-content active" id="tab-margin">
+
+        <div class="overall-card">
+            <div>
+                <div class="overall-label">整體維持率(元大證金公式)</div>
+                <div class="overall-value" id="overall-ratio">—</div>
+                <div style="font-size:11px;color:var(--text-dim);margin-top:6px;" id="included-count">—</div>
+            </div>
+            <div class="overall-meta">
+                <div class="meta-row">擔保品市值合計　　 <strong id="total-collateral">—</strong> 元</div>
+                <div class="meta-row">放款金額合計　　　 <strong id="total-loan">—</strong> 元</div>
+                <div class="meta-row">
+                    應收利息(可選填)
+                    <input type="number" class="interest-input" id="total-interest" value="0" min="0" step="100" oninput="calcMargin()">
+                    元
+                </div>
+                <div class="meta-row">放款＋利息合計　　 <strong id="total-denom">—</strong> 元</div>
+            </div>
+            <div class="threshold-bar">
+                <div class="threshold-label">維持率水位(以 300% 為滿格)</div>
+                <div class="bar-track"><div class="bar-fill" id="bar-fill" style="width:0%"></div></div>
+                <div class="bar-markers">
+                    <div class="bar-marker red" style="left:40%">120%<br>強平</div>
+                    <div class="bar-marker red" style="left:47%">130%<br>追繳</div>
+                    <div class="bar-marker"     style="left:66.7%">200%</div>
+                    <div class="bar-marker"     style="left:100%">300%</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="top-bar">
+            <div class="section-title">個股試算</div>
+            <div class="btn-group">
+                <button class="btn btn-info" id="btn-fetch-margin" onclick="fetchAllPricesMargin()">🔄 一鍵更新全部股價</button>
+                <button class="btn btn-secondary" onclick="toggleAll(true)">☑ 全選</button>
+                <button class="btn btn-secondary" onclick="toggleAll(false)">☐ 全不選</button>
+                <button class="btn btn-primary" id="btn-save" onclick="saveAll()">💾 儲存目前數值</button>
+                <button class="btn btn-secondary" onclick="resetAll()">↺ 還原初始值</button>
+            </div>
+        </div>
+
+        <div class="stocks-grid" id="stocks-grid"></div>
+
+        <div class="info-panel">
+            <strong>元大證金計算公式:</strong>
+            整戶維持率 = 擔保品市值合計 ÷(放款金額合計 ＋ 應收利息)× 100%<br>
+            單筆維持率 = 該股市值 ÷(該股放款金額 ＋ 應收利息)× 100%<br>
+            <strong>勾選框:</strong>取消勾選的股票會被排除在計算外,但保留所有數值。<br>
+            <strong>📌 跟現價 / ✏️ 手動:</strong>「跟現價」時模擬股價 = 現價(自動同步);切「手動」才能用滑桿模擬下跌情境。<br>
+            ⚠️ <strong>追繳線約 130%、強制平倉線約 120%</strong>(請以元大證金實際規定為準)。
+        </div>
+    </div>
+
+    <!-- ─────────  Tab 2: 損益計算  ───────── -->
+    <div class="tab-content" id="tab-pl">
+
+        <div class="pl-summary-grid">
+            <div class="pl-card"><div class="pl-card-label">總投入成本</div><div class="pl-card-value" id="pl-sum-cost">—</div></div>
+            <div class="pl-card"><div class="pl-card-label">目前總市值</div><div class="pl-card-value" id="pl-sum-value">—</div></div>
+            <div class="pl-card"><div class="pl-card-label">損益金額</div><div class="pl-card-value" id="pl-sum-pl">—</div></div>
+            <div class="pl-card"><div class="pl-card-label">整體報酬率</div><div class="pl-card-value" id="pl-sum-roi">—</div></div>
+        </div>
+
+        <div class="pl-panel">
+            <div class="pl-panel-header"><span class="pl-dot"></span>持倉明細(獨立資料,不影響試算器)</div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="text-align:left;">ETF</th>
+                            <th>持有股數</th>
+                            <th>總投入成本 (元)</th>
+                            <th>平均成本 (元)</th>
+                            <th>今日股價 (元)</th>
+                            <th>目前市值 (元)</th>
+                            <th>損益金額 (元)</th>
+                            <th>報酬率 (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pl-tbody"></tbody>
+                    <tfoot>
+                        <tr>
+                            <td>合計</td><td></td>
+                            <td id="pl-ft-cost">—</td><td></td><td></td>
+                            <td id="pl-ft-value">—</td>
+                            <td id="pl-ft-pl">—</td>
+                            <td id="pl-ft-roi">—</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div class="pl-action-bar">
+                <button class="btn btn-info" id="btn-fetch-pl" onclick="fetchAllPricesPL()">
+                    🔄 抓取今日行情
+                </button>
+                <button class="btn btn-secondary" onclick="calcPL()">
+                    💾 重新計算 / 儲存
+                </button>
+                <button class="btn btn-secondary" onclick="resetPL()">
+                    ↺ 清空輸入
+                </button>
+                <div class="pl-status">
+                    <div class="pl-status-dot" id="pl-status-dot"></div>
+                    <span id="pl-status-msg">輸入持股資料後點擊抓取。</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-panel">
+            <strong>使用方式:</strong>
+            輸入「持有股數」和「總投入成本」,系統自動算出平均成本;點「🔄 抓取今日行情」取得最新股價,即可看到損益和報酬率。<br>
+            <strong>注意:</strong>本表資料與「融資維持率試算」<u>完全獨立</u>,可作為純投資績效追蹤使用。<br>
+            <strong>顏色慣例:</strong>紅色=獲利、綠色=虧損(台股慣例)。
+        </div>
+    </div>
+
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  共用:股票定義
+// ════════════════════════════════════════════════════════════
+// market: 'tse' = 上市, 'otc' = 上櫃
+// Yahoo symbol: '.TW' = 上市, '.TWO' = 上櫃
+const DEFS = [
+    { code:'00713', name:'元大台灣高息低波', market:'tse', isNew:false, initShares:30000, initLoan:955000,  initRatio:1.6595, minPrice:30,  maxPrice:120 },
+    { code:'00927', name:'群益半導體收益',   market:'tse', isNew:false, initShares:51000, initLoan:900381,  initRatio:1.6896, minPrice:10,  maxPrice:60  },
+    { code:'00858', name:'永豐美國500大',    market:'otc', isNew:false, initShares:36000, initLoan:0,       initRatio:null,   minPrice:10,  maxPrice:60, initPrice:30.00 },
+    { code:'00980A',name:'野村臺灣優選',     market:'tse', isNew:true,  initShares:0,     initLoan:0,       initRatio:null,   minPrice:5,   maxPrice:30, initPrice:10.00 },
+    { code:'00981A',name:'主動統一台股增長', market:'tse', isNew:true,  initShares:0,     initLoan:0,       initRatio:null,   minPrice:5,   maxPrice:30, initPrice:10.00 },
+];
+
+// 反推初始股價
+DEFS.forEach(d => {
+    if (d.initLoan > 0 && d.initRatio) {
+        d.initPrice = +(d.initLoan * d.initRatio / d.initShares).toFixed(2);
+    }
+});
+
+// ════════════════════════════════════════════════════════════
+//  Tab 切換
+// ════════════════════════════════════════════════════════════
+function switchTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === `tab-${name}`));
+}
+
+// ════════════════════════════════════════════════════════════
+//  共用:股價抓取(TWSE → Yahoo → CORS 提示)
+// ════════════════════════════════════════════════════════════
+function buildTwseUrl(codes) {
+    const ex_ch = codes.map(c => {
+        const def = DEFS.find(d => d.code === c);
+        const market = def ? def.market : 'tse';
+        return `${market}_${c}.tw`;
+    }).join('|');
+    return `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${ex_ch}&json=1&delay=0&_=${Date.now()}`;
+}
+
+async function fetchFromTwse(codes) {
+    const url = buildTwseUrl(codes);
+    const res = await fetch(url, { method: 'GET', mode: 'cors' });
+    if (!res.ok) throw new Error(`TWSE HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data || !Array.isArray(data.msgArray)) throw new Error('TWSE 回傳格式錯誤');
+
+    const out = {};
+    data.msgArray.forEach(item => {
+        const code = item.c;
+        const z    = parseFloat(item.z);
+        const y    = parseFloat(item.y);
+        let price, isClose;
+        if (!isNaN(z) && z > 0) { price = z; isClose = false; }
+        else if (!isNaN(y) && y > 0) { price = y; isClose = true; }
+        else return;
+        out[code] = { price, isClose, time: item.t || '', date: item.d || '', source: 'TWSE' };
+    });
+    return out;
+}
+
+async function fetchFromYahoo(codes) {
+    // Yahoo 用 .TW (上市) 或 .TWO (上櫃)
+    const symbolMap = {};
+    const symbols = codes.map(c => {
+        const def = DEFS.find(d => d.code === c);
+        const suffix = (def && def.market === 'otc') ? '.TWO' : '.TW';
+        const sym = `${c}${suffix}`;
+        symbolMap[sym] = c;
+        return sym;
+    }).join(',');
+
+    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}`;
+    const res = await fetch(url, { method: 'GET', mode: 'cors' });
+    if (!res.ok) throw new Error(`Yahoo HTTP ${res.status}`);
+    const data = await res.json();
+    const list = data?.quoteResponse?.result;
+    if (!Array.isArray(list)) throw new Error('Yahoo 回傳格式錯誤');
+
+    const out = {};
+    list.forEach(item => {
+        const code = symbolMap[item.symbol] || item.symbol.replace(/\.TWO?$/, '');
+        const p    = item.regularMarketPrice;
+        if (typeof p !== 'number') return;
+        const isClose = item.marketState !== 'REGULAR';
+        out[code] = { price: p, isClose, time: '', date: '', source: 'Yahoo' };
+    });
+    return out;
+}
+
+async function fetchPrices(codes) {
+    let lastError = null;
+    try {
+        const result = await fetchFromTwse(codes);
+        if (Object.keys(result).length > 0) return { result, source: 'TWSE' };
+    } catch (e) { lastError = e; console.warn('[TWSE 抓取失敗]', e); }
+
+    try {
+        const result = await fetchFromYahoo(codes);
+        if (Object.keys(result).length > 0) return { result, source: 'Yahoo' };
+    } catch (e) { lastError = e; console.warn('[Yahoo 抓取失敗]', e); }
+
+    throw lastError || new Error('兩個來源都失敗');
+}
+
+// Banner
+function showBanner(text, level = 'info') {
+    const banner = document.getElementById('fetch-banner');
+    const icon   = document.getElementById('banner-icon');
+    const txt    = document.getElementById('banner-text');
+    const icons  = { info:'ℹ️', success:'✅', warning:'⚠️', danger:'❌' };
+    icon.textContent  = icons[level] || 'ℹ️';
+    txt.innerHTML     = text;
+    banner.className  = `fetch-banner ${level === 'info' ? '' : level}`;
+}
+function hideBanner() { document.getElementById('fetch-banner').classList.add('hidden'); }
+function showCorsHint() {
+    showBanner(
+        `兩個資料來源都失敗,可能是 CORS 限制。建議安裝 ` +
+        `<a href="https://chrome.google.com/webstore/detail/cors-unblock/lfhmikememgdcahcdlaciloancbhjino" target="_blank">CORS Unblock</a> ` +
+        `(Chrome) 或 <a href="https://addons.mozilla.org/firefox/addon/cors-everywhere/" target="_blank">CORS Everywhere</a> (Firefox),` +
+        `啟用後重新整理頁面再試。`,
+        'danger'
+    );
+}
+
+function fmt(n) { return n.toLocaleString('zh-TW', { maximumFractionDigits: 0 }); }
+
+
+// ════════════════════════════════════════════════════════════
+//  Tab 1:維持率試算
+// ════════════════════════════════════════════════════════════
+const state = {};
+DEFS.forEach(d => {
+    state[d.code] = {
+        price: d.initPrice,
+        shares: d.initShares,
+        loan: d.initLoan,
+        included: true,
+        priceMode: 'manual',  // 'follow' = 跟現價, 'manual' = 手動
+    };
+});
+
+// ── 建立卡片 ────────────────────────────────────────────────
+function buildCards() {
+    const grid = document.getElementById('stocks-grid');
+    grid.innerHTML = '';
+
+    DEFS.forEach(d => {
+        const noLoan = d.initLoan === 0 && !d.isNew;
+        const ip = d.initPrice.toFixed(2);
+
+        const card = document.createElement('div');
+        card.className = 'stock-card' + (d.isNew ? ' is-new' : '');
+        card.id = `card-${d.code}`;
+        card.innerHTML = `
+            <div class="stock-header">
+                <div class="stock-title-wrap">
+                    <div class="include-toggle checked" id="toggle-${d.code}"
+                         onclick="toggleInclude('${d.code}')"
+                         title="點擊切換是否納入計算"></div>
+                    <div>
+                        <div class="stock-code">${d.code}</div>
+                        <div class="stock-name">${d.name}</div>
+                        ${d.isNew ? '<span class="new-badge">新增試算</span>' : ''}
+                        <span class="excluded-badge" id="excluded-badge-${d.code}" style="display:none;">已排除</span>
+                    </div>
+                </div>
+                <div>
+                    <div class="stock-ratio" id="ratio-${d.code}">—</div>
+                    <div class="stock-ratio-label" id="ratio-label-${d.code}">${noLoan ? '僅擔保・不計單筆' : '單筆維持率'}</div>
+                </div>
+            </div>
+
+            <div class="stock-body">
+
+                <div class="editable-section">
+                    <div class="editable-label">持倉設定</div>
+                    <div class="field-row">
+                        <span class="field-label">持有股數</span>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="number" class="num-input sm" id="shares-${d.code}"
+                                value="${d.initShares}" min="0" step="1000"
+                                oninput="onSharesInput('${d.code}')">
+                            <span style="font-size:12px;color:var(--text-muted)">股</span>
+                        </div>
+                    </div>
+                    <div class="field-row">
+                        <span class="field-label">融資借款</span>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="number" class="num-input lg" id="loan-${d.code}"
+                                value="${d.initLoan}" min="0" step="10000"
+                                oninput="onLoanInput('${d.code}')">
+                            <span style="font-size:12px;color:var(--text-muted)">元</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field-row">
+                    <span class="field-label">擔保品市值</span>
+                    <span class="field-value" id="mktval-${d.code}">—</span>
+                </div>
+
+                <div class="price-section">
+
+                    <!-- 現價 -->
+                    <div class="cur-price-row">
+                        <span class="field-label">現價(元)</span>
+                        <div class="cur-price-input-group">
+                            <input type="number" class="num-input sm" id="curprice-${d.code}"
+                                placeholder="輸入" min="0" step="0.01"
+                                oninput="onCurPriceInput('${d.code}')">
+                            <button class="fetch-btn" id="fetchbtn-${d.code}"
+                                onclick="fetchOnePriceMargin('${d.code}')" title="抓取最新股價">🔄</button>
+                        </div>
+                    </div>
+                    <div class="cur-price-meta" id="curprice-meta-${d.code}"></div>
+
+                    <!-- 股價來源切換 -->
+                    <div class="source-toggle" role="tablist">
+                        <button class="source-opt" id="src-follow-${d.code}"
+                                onclick="setPriceMode('${d.code}','follow')">📌 跟現價</button>
+                        <button class="source-opt active" id="src-manual-${d.code}"
+                                onclick="setPriceMode('${d.code}','manual')">✏️ 手動</button>
+                    </div>
+
+                    <!-- 模擬價 -->
+                    <div id="sim-block-${d.code}">
+                        <div class="sim-price-row">
+                            <div class="sim-label-group">
+                                <span class="field-label">模擬股價(元)</span>
+                                <span class="price-diff" id="pricediff-${d.code}"></span>
+                            </div>
+                            <div class="price-control">
+                                <button class="price-btn" id="dec-${d.code}" onclick="adjustPrice('${d.code}',-0.5)">−</button>
+                                <input type="number" class="num-input sm" id="price-${d.code}"
+                                    value="${ip}" min="${d.minPrice}" max="${d.maxPrice}" step="0.01"
+                                    oninput="onPriceInput('${d.code}')">
+                                <button class="price-btn" id="inc-${d.code}" onclick="adjustPrice('${d.code}',+0.5)">＋</button>
+                            </div>
+                        </div>
+                        <input type="range" id="slider-${d.code}"
+                            min="${d.minPrice}" max="${d.maxPrice}" step="0.01" value="${ip}"
+                            oninput="onSliderInput('${d.code}')">
+                        <div class="slider-labels">
+                            <span>${d.minPrice}</span>
+                            <span>初始 ${ip}</span>
+                            <span>${d.maxPrice}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stock-status ok" id="status-${d.code}">正常</div>
+            </div>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+// ── 勾選 ────────────────────────────────────────────────────
+function toggleInclude(code) {
+    state[code].included = !state[code].included;
+    applyIncludeUI(code);
+    calcMargin();
+}
+function applyIncludeUI(code) {
+    const inc      = state[code].included;
+    document.getElementById(`card-${code}`).classList.toggle('excluded', !inc);
+    document.getElementById(`toggle-${code}`).classList.toggle('checked', inc);
+    document.getElementById(`excluded-badge-${code}`).style.display = inc ? 'none' : 'inline-block';
+}
+function toggleAll(checked) {
+    DEFS.forEach(d => { state[d.code].included = checked; applyIncludeUI(d.code); });
+    calcMargin();
+}
+
+// ── 股價來源切換 ────────────────────────────────────────────
+function setPriceMode(code, mode) {
+    state[code].priceMode = mode;
+    applyPriceModeUI(code);
+    if (mode === 'follow') {
+        // 切換到「跟現價」時,把模擬股價同步到現價
+        syncSimPriceToCurrent(code);
+    }
+    calcMargin();
+}
+function applyPriceModeUI(code) {
+    const mode = state[code].priceMode;
+    document.getElementById(`src-follow-${code}`).classList.toggle('active', mode === 'follow');
+    document.getElementById(`src-manual-${code}`).classList.toggle('active', mode === 'manual');
+
+    // 跟現價時:鎖定 input、滑桿、+/-
+    const disabled = (mode === 'follow');
+    document.getElementById(`price-${code}`).disabled  = disabled;
+    document.getElementById(`slider-${code}`).disabled = disabled;
+    document.getElementById(`dec-${code}`).disabled    = disabled;
+    document.getElementById(`inc-${code}`).disabled    = disabled;
+}
+function syncSimPriceToCurrent(code) {
+    const cur = parseFloat(document.getElementById(`curprice-${code}`).value);
+    if (isNaN(cur) || cur <= 0) return;
+    const d = DEFS.find(x => x.code === code);
+    // 確保在滑桿範圍內(若超出,擴展邊界顯示)
+    const v = Math.max(d.minPrice, Math.min(d.maxPrice, cur));
+    state[code].price = cur;  // 實際計算用真實現價,不限制
+    document.getElementById(`price-${code}`).value  = cur.toFixed(2);
+    document.getElementById(`slider-${code}`).value = v;
+}
+
+// ── 輸入事件 ────────────────────────────────────────────────
+function onPriceInput(code) {
+    if (state[code].priceMode === 'follow') return;  // 跟現價時不接受手動輸入
+    const val = parseFloat(document.getElementById(`price-${code}`).value);
+    if (isNaN(val)) return;
+    state[code].price = val;
+    document.getElementById(`slider-${code}`).value = val;
+    calcMargin();
+}
+function onSliderInput(code) {
+    if (state[code].priceMode === 'follow') return;
+    const val = parseFloat(document.getElementById(`slider-${code}`).value);
+    state[code].price = val;
+    document.getElementById(`price-${code}`).value = val.toFixed(2);
+    calcMargin();
+}
+function adjustPrice(code, delta) {
+    if (state[code].priceMode === 'follow') return;
+    const d = DEFS.find(x => x.code === code);
+    let val = +(parseFloat(document.getElementById(`price-${code}`).value) + delta).toFixed(2);
+    val     = Math.max(d.minPrice, Math.min(d.maxPrice, val));
+    state[code].price = val;
+    document.getElementById(`price-${code}`).value  = val.toFixed(2);
+    document.getElementById(`slider-${code}`).value = val;
+    calcMargin();
+}
+function onSharesInput(code) {
+    state[code].shares = parseInt(document.getElementById(`shares-${code}`).value) || 0;
+    calcMargin();
+}
+function onLoanInput(code) {
+    state[code].loan = parseFloat(document.getElementById(`loan-${code}`).value) || 0;
+    calcMargin();
+}
+function onCurPriceInput(code) {
+    const meta = document.getElementById(`curprice-meta-${code}`);
+    if (meta.classList.contains('fresh')) {
+        meta.textContent = ''; meta.className = 'cur-price-meta';
+    }
+    // 如果是「跟現價」模式,模擬股價也跟著動
+    if (state[code].priceMode === 'follow') {
+        syncSimPriceToCurrent(code);
+    }
+    updateDiff(code);
+    calcMargin();
+}
+
+// ── 抓取股價 (維持率頁) ──────────────────────────────────────
+function applyFetchedPriceMargin(code, info) {
+    const inputEl = document.getElementById(`curprice-${code}`);
+    const metaEl  = document.getElementById(`curprice-meta-${code}`);
+    inputEl.value = info.price.toFixed(2);
+
+    const tag = info.isClose ? '收盤' : '即時';
+    let timeStr = '';
+    if (info.date && info.time) {
+        const m = info.date.substring(4,6);
+        const d = info.date.substring(6,8);
+        timeStr = ` ${m}/${d} ${info.time}`;
+    } else if (!info.isClose) {
+        const now = new Date();
+        timeStr = ` ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    }
+    metaEl.textContent = `✓ ${info.source} ${tag}價${timeStr}`;
+    metaEl.className   = 'cur-price-meta fresh';
+
+    // 若該檔設為「跟現價」,自動同步
+    if (state[code].priceMode === 'follow') {
+        syncSimPriceToCurrent(code);
+    }
+    updateDiff(code);
+}
+function markFetchErrorMargin(code, msg) {
+    const metaEl = document.getElementById(`curprice-meta-${code}`);
+    metaEl.textContent = `✕ ${msg}`;
+    metaEl.className   = 'cur-price-meta error';
+}
+async function fetchOnePriceMargin(code) {
+    const btn = document.getElementById(`fetchbtn-${code}`);
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>';
+    try {
+        const { result, source } = await fetchPrices([code]);
+        if (result[code]) {
+            applyFetchedPriceMargin(code, result[code]);
+            showBanner(`已從 <strong>${source}</strong> 抓取 ${code} 最新股價`, 'success');
+        } else {
+            markFetchErrorMargin(code, '查無資料');
+            showBanner(`${code} 查無資料,請確認代號是否正確`, 'warning');
+        }
+    } catch (e) {
+        markFetchErrorMargin(code, '抓取失敗');
+        showCorsHint();
+    } finally {
+        btn.disabled = false; btn.innerHTML = '🔄';
+    }
+    calcMargin();
+}
+async function fetchAllPricesMargin() {
+    const btn = document.getElementById('btn-fetch-margin');
+    btn.disabled = true;
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner"></span> 抓取中...';
+
+    const codes = DEFS.filter(d => state[d.code].shares > 0 || !d.isNew).map(d => d.code);
+    if (codes.length === 0) {
+        btn.disabled = false; btn.innerHTML = orig;
+        showBanner('沒有可抓取的股票', 'warning');
+        return;
+    }
+    codes.forEach(c => {
+        const fb = document.getElementById(`fetchbtn-${c}`);
+        fb.disabled = true; fb.innerHTML = '<span class="spinner"></span>';
+    });
+    try {
+        const { result, source } = await fetchPrices(codes);
+        let okCount = 0, failCount = 0;
+        codes.forEach(c => {
+            if (result[c]) { applyFetchedPriceMargin(c, result[c]); okCount++; }
+            else { markFetchErrorMargin(c, '查無資料'); failCount++; }
+        });
+        if (failCount === 0) {
+            showBanner(`已從 <strong>${source}</strong> 抓取 ${okCount} 檔股價`, 'success');
+        } else {
+            showBanner(`從 <strong>${source}</strong> 成功抓取 ${okCount} 檔,${failCount} 檔查無資料`, 'warning');
+        }
+    } catch (e) {
+        codes.forEach(c => markFetchErrorMargin(c, '抓取失敗'));
+        showCorsHint();
+    } finally {
+        codes.forEach(c => {
+            const fb = document.getElementById(`fetchbtn-${c}`);
+            fb.disabled = false; fb.innerHTML = '🔄';
+        });
+        btn.disabled = false; btn.innerHTML = orig;
+    }
+    calcMargin();
+}
+
+// ── 漲跌幅 ──────────────────────────────────────────────────
+function updateDiff(code) {
+    const curVal  = parseFloat(document.getElementById(`curprice-${code}`).value);
+    const simVal  = state[code].price;
+    const el      = document.getElementById(`pricediff-${code}`);
+    if (isNaN(curVal) || curVal <= 0) { el.textContent = ''; el.className = 'price-diff'; return; }
+    const pct = (simVal - curVal) / curVal * 100;
+    if (Math.abs(pct) < 0.005) { el.textContent = '±0.00%'; el.className = 'price-diff flat'; }
+    else if (pct > 0)          { el.textContent = `+${pct.toFixed(2)}%`; el.className = 'price-diff up'; }
+    else                       { el.textContent = `${pct.toFixed(2)}%`; el.className = 'price-diff down'; }
+}
+
+// ── 計算維持率 ──────────────────────────────────────────────
+function ratioClass(r) {
+    if (r <= 130) return 'danger';
+    if (r <= 166) return 'warning';
+    return 'ok';
+}
+function statusText(r) {
+    if (r <= 120) return '⛔ 強制平倉風險';
+    if (r <= 130) return '🚨 低於追繳線(130%)';
+    if (r <= 150) return '⚠️ 偏低,請注意';
+    if (r <= 166) return '⚠️ 接近初始水位';
+    return '✅ 正常';
+}
+function calcMargin() {
+    let totalCollateral = 0, totalLoan = 0;
+    let includedCount = 0, totalCount = DEFS.length;
+    const interest = parseFloat(document.getElementById('total-interest').value) || 0;
+
+    DEFS.forEach(d => {
+        const s        = state[d.code];
+        const mktVal   = s.shares * s.price;
+        const ratioEl  = document.getElementById(`ratio-${d.code}`);
+        const labelEl  = document.getElementById(`ratio-label-${d.code}`);
+        const statusEl = document.getElementById(`status-${d.code}`);
+        const mktEl    = document.getElementById(`mktval-${d.code}`);
+
+        if (s.included) {
+            includedCount++;
+            totalCollateral += mktVal;
+            if (s.loan > 0) totalLoan += s.loan;
+        }
+
+        mktEl.textContent = mktVal > 0 ? fmt(mktVal) + ' 元' : '—';
+
+        if (!s.included) {
+            if (s.loan > 0) {
+                const r = mktVal / (s.loan + interest) * 100;
+                ratioEl.textContent  = r.toFixed(2) + '%';
+                ratioEl.className    = 'stock-ratio muted';
+                labelEl.textContent  = '已排除・僅供參考';
+            } else {
+                ratioEl.textContent  = '—';
+                ratioEl.className    = 'stock-ratio muted';
+                labelEl.textContent  = '已排除';
+            }
+            statusEl.className   = 'stock-status excluded';
+            statusEl.textContent = '☐ 不計入整體';
+        } else if (s.loan > 0) {
+            const r   = mktVal / (s.loan + interest) * 100;
+            const cls = ratioClass(r);
+            ratioEl.textContent  = r.toFixed(2) + '%';
+            labelEl.textContent  = '單筆維持率';
+            ratioEl.className    = `stock-ratio${cls !== 'ok' ? ' ' + cls : ''}`;
+            statusEl.className   = `stock-status ${cls}`;
+            statusEl.textContent = statusText(r);
+        } else if (s.shares > 0) {
+            ratioEl.textContent  = '—';
+            labelEl.textContent  = '僅擔保・不計單筆';
+            ratioEl.className    = 'stock-ratio';
+            statusEl.className   = 'stock-status noloan';
+            statusEl.textContent = '✅ 無借款,僅供擔保';
+        } else {
+            ratioEl.textContent  = '—';
+            labelEl.textContent  = '尚未設定';
+            ratioEl.className    = 'stock-ratio';
+            statusEl.className   = 'stock-status noloan';
+            statusEl.textContent = '— 請輸入股數與借款';
+        }
+
+        updateDiff(d.code);
+    });
+
+    const totalDenom = totalLoan + interest;
+    const overall    = totalDenom > 0 ? totalCollateral / totalDenom * 100 : 0;
+    const overallEl  = document.getElementById('overall-ratio');
+    overallEl.textContent = totalDenom > 0 ? overall.toFixed(2) + '%' : '—';
+    const cls = ratioClass(overall);
+    overallEl.className = `overall-value${cls !== 'ok' ? ' ' + cls : ''}`;
+
+    document.getElementById('total-collateral').textContent = fmt(totalCollateral);
+    document.getElementById('total-loan').textContent       = totalLoan > 0 ? fmt(totalLoan) : '—';
+    document.getElementById('total-denom').textContent      = totalDenom > 0 ? fmt(totalDenom) : '—';
+    document.getElementById('included-count').textContent   = `已納入 ${includedCount} / ${totalCount} 檔`;
+
+    const pct  = Math.min(overall / 300 * 100, 100);
+    const fill = document.getElementById('bar-fill');
+    fill.style.width      = (totalDenom > 0 ? pct : 0) + '%';
+    fill.style.background = overall <= 130 ? 'var(--danger)' : overall <= 166 ? 'var(--warning)' : 'var(--accent)';
+}
+
+// ── 儲存 / 還原 (維持率頁) ──────────────────────────────────
+const STORAGE_KEY = 'margin_sim_v6';
+
+function saveAll() {
+    const data = { interest: parseFloat(document.getElementById('total-interest').value) || 0 };
+    DEFS.forEach(d => {
+        data[d.code] = {
+            price:     state[d.code].price,
+            shares:    state[d.code].shares,
+            loan:      state[d.code].loan,
+            curprice:  parseFloat(document.getElementById(`curprice-${d.code}`).value) || 0,
+            included:  state[d.code].included,
+            priceMode: state[d.code].priceMode,
+        };
+    });
+    ['margin_sim_v1','margin_sim_v2','margin_sim_v3','margin_sim_v4','margin_sim_v5'].forEach(k => localStorage.removeItem(k));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
+    const btn = document.getElementById('btn-save');
+    btn.textContent = '✅ 已儲存';
+    btn.disabled = true;
+    setTimeout(() => { btn.innerHTML = '💾 儲存目前數值'; btn.disabled = false; }, 1500);
+}
+
+function loadSaved() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return false;
+        const data = JSON.parse(raw);
+        if (!data || typeof data !== 'object') return false;
+
+        if (typeof data.interest === 'number') {
+            document.getElementById('total-interest').value = data.interest;
+        }
+        DEFS.forEach(d => {
+            const s = data[d.code];
+            if (!s) return;
+            if (s.price  > 0)  state[d.code].price    = s.price;
+            if (s.shares >= 0) state[d.code].shares   = s.shares;
+            if (s.loan   >= 0) state[d.code].loan     = s.loan;
+            if (typeof s.included === 'boolean') state[d.code].included = s.included;
+            if (s.priceMode === 'follow' || s.priceMode === 'manual') state[d.code].priceMode = s.priceMode;
+        });
+        return true;
+    } catch(e) {
+        localStorage.removeItem(STORAGE_KEY);
+        return false;
+    }
+}
+
+function resetAll() {
+    DEFS.forEach(d => {
+        state[d.code] = { price: d.initPrice, shares: d.initShares, loan: d.initLoan, included: true, priceMode: 'manual' };
+        document.getElementById(`price-${d.code}`).value    = d.initPrice.toFixed(2);
+        document.getElementById(`slider-${d.code}`).value   = d.initPrice;
+        document.getElementById(`shares-${d.code}`).value   = d.initShares;
+        document.getElementById(`loan-${d.code}`).value     = d.initLoan;
+        document.getElementById(`curprice-${d.code}`).value = '';
+        document.getElementById(`curprice-meta-${d.code}`).textContent = '';
+        document.getElementById(`curprice-meta-${d.code}`).className   = 'cur-price-meta';
+        applyIncludeUI(d.code);
+        applyPriceModeUI(d.code);
+    });
+    document.getElementById('total-interest').value = 0;
+    hideBanner();
+    calcMargin();
+}
+
+
+// ════════════════════════════════════════════════════════════
+//  Tab 2:損益計算 (獨立資料)
+// ════════════════════════════════════════════════════════════
+const PL_KEY = 'pl_calc_v1';
+const plData = {};
+DEFS.forEach(d => { plData[d.code] = { shares: 0, cost: 0, price: 0 }; });
+
+function buildPLTable() {
+    const tbody = document.getElementById('pl-tbody');
+    tbody.innerHTML = '';
+    DEFS.forEach(d => {
+        const market = d.market === 'otc' ? '櫃買中心' : '證交所';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>
+                <div class="etf-code">${d.code}</div>
+                <div class="etf-name">${d.name}</div>
+                <div class="etf-src">${market}</div>
+            </td>
+            <td><input type="number" class="table-input" id="pl-shares-${d.code}" placeholder="股數" min="0" oninput="onPLInput()"></td>
+            <td><input type="number" class="table-input" id="pl-cost-${d.code}"   placeholder="總成本" min="0" oninput="onPLInput()"></td>
+            <td id="pl-avg-${d.code}"   class="mono neutral-cell">—</td>
+            <td>
+                <input type="number" class="table-input" id="pl-price-${d.code}" placeholder="可手填" step="0.01" min="0" oninput="onPLInput()">
+                <div class="price-meta-cell" id="pl-price-meta-${d.code}"></div>
+            </td>
+            <td id="pl-value-${d.code}" class="mono">—</td>
+            <td id="pl-pl-${d.code}"    class="mono neutral-cell">—</td>
+            <td id="pl-roi-${d.code}"   class="mono neutral-cell">—</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function onPLInput() {
+    DEFS.forEach(d => {
+        plData[d.code].shares = parseFloat(document.getElementById(`pl-shares-${d.code}`).value) || 0;
+        plData[d.code].cost   = parseFloat(document.getElementById(`pl-cost-${d.code}`).value)   || 0;
+        plData[d.code].price  = parseFloat(document.getElementById(`pl-price-${d.code}`).value)  || 0;
+    });
+    calcPL();
+}
+
+function applyPLCellColor(elPL, elROI, pl, hasData) {
+    if (!hasData) {
+        elPL.textContent = '—'; elROI.textContent = '—';
+        elPL.className = 'mono neutral-cell'; elROI.className = 'mono neutral-cell';
+        return;
+    }
+    const cls = pl > 0 ? 'profit-cell' : pl < 0 ? 'loss-cell' : 'neutral-cell';
+    elPL.className = `mono ${cls}`; elROI.className = `mono ${cls}`;
+}
+
+function calcPL() {
+    let sumCost = 0, sumValue = 0;
+
+    DEFS.forEach(d => {
+        const code = d.code;
+        const { shares, cost, price } = plData[code];
+
+        document.getElementById(`pl-avg-${code}`).textContent =
+            (shares > 0 && cost > 0) ? (cost / shares).toFixed(2) : '—';
+
+        const totalValue = shares * price;
+        const pl  = totalValue - cost;
+        const roi = cost > 0 ? (pl / cost) * 100 : 0;
+        const hasData = cost > 0 && totalValue > 0;
+
+        document.getElementById(`pl-value-${code}`).textContent = totalValue > 0 ? fmt(totalValue) : '—';
+        const plEl  = document.getElementById(`pl-pl-${code}`);
+        const roiEl = document.getElementById(`pl-roi-${code}`);
+        if (hasData) { plEl.textContent = fmt(pl); roiEl.textContent = roi.toFixed(2) + ' %'; }
+        applyPLCellColor(plEl, roiEl, pl, hasData);
+
+        sumCost  += cost;
+        sumValue += totalValue;
+    });
+
+    // 自動儲存
+    localStorage.setItem(PL_KEY, JSON.stringify(plData));
+
+    const totalPL  = sumValue - sumCost;
+    const totalROI = sumCost > 0 ? (totalPL / sumCost) * 100 : 0;
+    const hasTotal = sumCost > 0 && sumValue > 0;
+
+    document.getElementById('pl-sum-cost').textContent  = sumCost  > 0 ? fmt(sumCost)  : '—';
+    document.getElementById('pl-sum-value').textContent = sumValue > 0 ? fmt(sumValue) : '—';
+
+    ['pl-sum-pl','pl-sum-roi'].forEach(id => {
+        document.getElementById(id).textContent = '—';
+        document.getElementById(id).className = 'pl-card-value';
+    });
+    if (hasTotal) {
+        const plCard  = document.getElementById('pl-sum-pl');
+        const roiCard = document.getElementById('pl-sum-roi');
+        plCard.textContent  = fmt(totalPL);
+        roiCard.textContent = totalROI.toFixed(2) + ' %';
+        const cls = totalPL > 0 ? 'profit' : totalPL < 0 ? 'loss' : '';
+        plCard.className  = `pl-card-value ${cls}`;
+        roiCard.className = `pl-card-value ${cls}`;
+    }
+
+    document.getElementById('pl-ft-cost').textContent  = sumCost  > 0 ? fmt(sumCost)  : '—';
+    document.getElementById('pl-ft-value').textContent = sumValue > 0 ? fmt(sumValue) : '—';
+    const ftPL  = document.getElementById('pl-ft-pl');
+    const ftROI = document.getElementById('pl-ft-roi');
+    if (hasTotal) {
+        ftPL.textContent  = fmt(totalPL);
+        ftROI.textContent = totalROI.toFixed(2) + ' %';
+        const cls = totalPL > 0 ? 'profit-cell' : totalPL < 0 ? 'loss-cell' : '';
+        ftPL.className = cls; ftROI.className = cls;
+    } else {
+        ftPL.textContent = '—'; ftROI.textContent = '—';
+        ftPL.className = ''; ftROI.className = '';
+    }
+}
+
+function loadPLData() {
+    try {
+        const raw = localStorage.getItem(PL_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (!data || typeof data !== 'object') return;
+        DEFS.forEach(d => {
+            const s = data[d.code];
+            if (!s) return;
+            if (s.shares >= 0) {
+                plData[d.code].shares = s.shares;
+                if (s.shares > 0) document.getElementById(`pl-shares-${d.code}`).value = s.shares;
+            }
+            if (s.cost >= 0) {
+                plData[d.code].cost = s.cost;
+                if (s.cost > 0) document.getElementById(`pl-cost-${d.code}`).value = s.cost;
+            }
+            if (s.price >= 0) {
+                plData[d.code].price = s.price;
+                if (s.price > 0) document.getElementById(`pl-price-${d.code}`).value = s.price;
+            }
+        });
+    } catch(e) { localStorage.removeItem(PL_KEY); }
+}
+
+function resetPL() {
+    DEFS.forEach(d => {
+        plData[d.code] = { shares: 0, cost: 0, price: 0 };
+        document.getElementById(`pl-shares-${d.code}`).value = '';
+        document.getElementById(`pl-cost-${d.code}`).value   = '';
+        document.getElementById(`pl-price-${d.code}`).value  = '';
+        document.getElementById(`pl-price-meta-${d.code}`).textContent = '';
+        document.getElementById(`pl-price-meta-${d.code}`).className   = 'price-meta-cell';
+    });
+    localStorage.removeItem(PL_KEY);
+    calcPL();
+}
+
+// ── 損益頁抓取股價 ──────────────────────────────────────────
+async function fetchAllPricesPL() {
+    const btn   = document.getElementById('btn-fetch-pl');
+    const dot   = document.getElementById('pl-status-dot');
+    const msgEl = document.getElementById('pl-status-msg');
+
+    btn.disabled = true;
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner"></span> 抓取中...';
+    dot.className = 'pl-status-dot loading';
+    msgEl.textContent = '正在查詢行情…';
+
+    // 抓所有有持股的(沒輸入股數的也抓,因為使用者可能想先看價格再決定)
+    const codes = DEFS.map(d => d.code);
+
+    try {
+        const { result, source } = await fetchPrices(codes);
+        let okCount = 0, failCount = 0;
+
+        codes.forEach(c => {
+            const metaEl  = document.getElementById(`pl-price-meta-${c}`);
+            const inputEl = document.getElementById(`pl-price-${c}`);
+            if (result[c]) {
+                const info = result[c];
+                inputEl.value = info.price.toFixed(2);
+                plData[c].price = info.price;
+                const tag = info.isClose ? '收盤' : '即時';
+                let timeStr = '';
+                if (info.date && info.time) {
+                    const m = info.date.substring(4,6), d = info.date.substring(6,8);
+                    timeStr = ` ${m}/${d} ${info.time}`;
+                } else if (!info.isClose) {
+                    const now = new Date();
+                    timeStr = ` ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+                }
+                metaEl.textContent = `✓ ${info.source} ${tag}${timeStr}`;
+                metaEl.className   = 'price-meta-cell fresh';
+                okCount++;
+            } else {
+                metaEl.textContent = '✕ 查無資料';
+                metaEl.className   = 'price-meta-cell error';
+                failCount++;
+            }
+        });
+
+        const now = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+        if (failCount === 0) {
+            dot.className = 'pl-status-dot ok';
+            msgEl.textContent = `✅ ${now} 全部更新(來源:${source})`;
+            showBanner(`已從 <strong>${source}</strong> 抓取 ${okCount} 檔股價`, 'success');
+        } else if (okCount > 0) {
+            dot.className = 'pl-status-dot partial';
+            msgEl.textContent = `⚠️ ${now} 成功 ${okCount} 檔,失敗 ${failCount} 檔`;
+        } else {
+            dot.className = 'pl-status-dot error';
+            msgEl.textContent = '❌ 抓取失敗';
+            showCorsHint();
+        }
+    } catch (e) {
+        codes.forEach(c => {
+            const metaEl = document.getElementById(`pl-price-meta-${c}`);
+            metaEl.textContent = '✕ 抓取失敗';
+            metaEl.className   = 'price-meta-cell error';
+        });
+        dot.className = 'pl-status-dot error';
+        msgEl.textContent = '❌ 抓取失敗,請檢查網路或安裝 CORS 擴充套件';
+        showCorsHint();
+    } finally {
+        btn.disabled = false; btn.innerHTML = orig;
+    }
+    calcPL();
+}
+
+
+// ════════════════════════════════════════════════════════════
+//  初始化
+// ════════════════════════════════════════════════════════════
+window.onload = () => {
+    // 維持率頁
+    buildCards();
+    const hasSaved = loadSaved();
+    DEFS.forEach(d => {
+        const s = state[d.code];
+        document.getElementById(`price-${d.code}`).value  = s.price.toFixed(2);
+        document.getElementById(`slider-${d.code}`).value = Math.max(d.minPrice, Math.min(d.maxPrice, s.price));
+        document.getElementById(`shares-${d.code}`).value = s.shares;
+        document.getElementById(`loan-${d.code}`).value   = s.loan;
+        applyIncludeUI(d.code);
+        applyPriceModeUI(d.code);
+        if (hasSaved) {
+            try {
+                const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
+                const cp  = raw?.[d.code]?.curprice;
+                if (cp > 0) document.getElementById(`curprice-${d.code}`).value = cp;
+            } catch(e) {}
+        }
+    });
+    calcMargin();
+
+    // 損益頁
+    buildPLTable();
+    loadPLData();
+    calcPL();
+};
+</script>
+</body>
+</html>
