@@ -435,19 +435,22 @@
             background: var(--surface2);
         }
 
-        /* 刪除按鈕 */
+        /* 刪除按鈕 ── 絕對定位於右上角,不影響 header 排版 */
+        .stock-card { position: relative; }
         .delete-btn {
+            position: absolute; top: 8px; right: 8px;
             background: transparent; border: 1.5px solid transparent;
             cursor: pointer; padding: 3px 7px;
-            font-size: 12px; color: var(--text-dim);
+            font-size: 11px; color: var(--text-dim);
             border-radius: 5px; transition: all 0.15s;
-            margin-top: 4px; align-self: flex-start;
+            z-index: 2;
         }
         .delete-btn:hover {
             background: var(--danger-bg); color: var(--danger);
             border-color: #e6b8b0;
         }
         .stock-card.is-custom { border-color: #c8a87a; }
+        .stock-card.is-custom .stock-header { padding-right: 70px; }  /* 讓刪除鈕不蓋到比率 */
         .custom-badge {
             font-size: 11px; background: #fdf6e3; color: var(--warning);
             border: 1px solid #e6cf99; border-radius: 4px; padding: 2px 7px;
@@ -1082,6 +1085,7 @@ function buildCards() {
         card.className = 'stock-card' + (d.isNew ? ' is-new' : '') + (isCustom ? ' is-custom' : '');
         card.id = `card-${d.code}`;
         card.innerHTML = `
+            ${isCustom ? `<button class="delete-btn" onclick="deleteStock('${d.code}')" title="刪除此股票">🗑️ 刪除</button>` : ''}
             <div class="stock-header">
                 <div class="stock-title-wrap">
                     <div class="include-toggle checked" id="toggle-${d.code}"
@@ -1095,10 +1099,9 @@ function buildCards() {
                         <span class="excluded-badge" id="excluded-badge-${d.code}" style="display:none;">已排除</span>
                     </div>
                 </div>
-                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+                <div>
                     <div class="stock-ratio" id="ratio-${d.code}">—</div>
                     <div class="stock-ratio-label" id="ratio-label-${d.code}">${noLoan ? '僅擔保・不計單筆' : '單筆維持率'}</div>
-                    ${isCustom ? `<button class="delete-btn" onclick="deleteStock('${d.code}')" title="刪除此股票">🗑️ 刪除</button>` : ''}
                 </div>
             </div>
 
@@ -1176,7 +1179,6 @@ function buildCards() {
                             oninput="onSliderInput('${d.code}')">
                         <div class="slider-labels">
                             <span>${d.minPrice}</span>
-                            <span>初始 ${ip}</span>
                             <span>${d.maxPrice}</span>
                         </div>
                     </div>
