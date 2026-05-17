@@ -332,7 +332,7 @@
         .tranche-block.expanded { display: flex; }
         .tranche-list { display: flex; flex-direction: column; gap: 6px; }
         .tranche-row {
-            display: grid; grid-template-columns: 28px 1fr 1fr auto 24px;
+            display: grid; grid-template-columns: 28px 110px 1fr 1fr auto 24px;
             gap: 6px; align-items: center;
             padding: 6px 8px; background: var(--surface); border: 1px solid var(--border-soft);
             border-radius: 5px;
@@ -348,7 +348,13 @@
             font-family: 'JetBrains Mono', monospace; font-size: 12px; text-align: right;
             width: 100%; min-width: 0;
         }
-        .tranche-input:focus { outline: none; border-color: var(--accent); }
+        .tranche-date {
+            padding: 4px 6px; background: var(--bg); border: 1px solid var(--border);
+            border-radius: 4px; color: var(--text);
+            font-family: 'JetBrains Mono', monospace; font-size: 11px;
+            width: 100%; min-width: 0;
+        }
+        .tranche-input:focus, .tranche-date:focus { outline: none; border-color: var(--accent); }
         .tranche-ratio {
             font-family: 'JetBrains Mono', monospace; font-size: 12px;
             font-weight: 600; color: var(--accent);
@@ -371,22 +377,61 @@
         }
         .tranche-add-btn:hover { background: var(--bg2); color: var(--accent); border-color: var(--accent); }
         .tranche-headers {
-            display: grid; grid-template-columns: 28px 1fr 1fr auto 24px;
+            display: grid; grid-template-columns: 28px 110px 1fr 1fr auto 24px;
             gap: 6px; padding: 0 8px;
             font-size: 10px; color: var(--text-dim); letter-spacing: 0.3px;
         }
         .tranche-headers span { text-align: right; }
         .tranche-headers span:first-child { text-align: center; }
+        .tranche-headers span:nth-child(2) { text-align: left; }
         .tranche-hint {
             font-size: 11px; color: var(--text-dim); line-height: 1.5;
         }
         .tranche-summary-row {
-            display: flex; justify-content: space-between;
+            display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
             font-size: 11px; color: var(--text-muted);
             padding: 6px 8px; border-top: 1px dashed var(--border-soft);
         }
         .tranche-summary-row strong {
             font-family: 'JetBrains Mono', monospace; color: var(--text);
+        }
+
+        /* 利率輸入 */
+        .rate-row {
+            display: flex; align-items: center; justify-content: space-between; gap: 8px;
+            padding: 8px 12px; background: var(--info-bg);
+            border: 1px solid #c5d8ed; border-radius: 6px;
+            font-size: 12px;
+        }
+        .rate-row .rate-label {
+            color: var(--info); font-weight: 500;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .rate-input-group { display: flex; align-items: center; gap: 4px; }
+        .rate-input {
+            width: 70px; padding: 4px 8px;
+            background: var(--surface); border: 1.5px solid #c5d8ed;
+            border-radius: 5px; color: var(--text);
+            font-family: 'JetBrains Mono', monospace; font-size: 12px; text-align: right;
+        }
+        .rate-input:focus { outline: none; border-color: var(--info); box-shadow: 0 0 0 3px rgba(58,109,163,0.15); }
+
+        /* 整體應收利息切換 */
+        .interest-row {
+            display: flex; align-items: center; gap: 8px;
+            flex-wrap: wrap;
+        }
+        .interest-toggle {
+            display: flex; align-items: center; gap: 5px;
+            font-size: 11px; color: var(--text-muted); cursor: pointer;
+            user-select: none;
+        }
+        .interest-toggle input { margin: 0; cursor: pointer; }
+        .interest-est-badge {
+            font-size: 10px; color: var(--info);
+            background: var(--info-bg); border: 1px solid #c5d8ed;
+            border-radius: 4px; padding: 2px 6px;
+            font-family: 'JetBrains Mono', monospace;
         }
 
         /* 卡片總股數/借款在「有分筆」時變唯讀 */
@@ -675,10 +720,20 @@
             <div class="overall-meta">
                 <div class="meta-row">擔保品市值合計　　 <strong id="total-collateral">—</strong> 元</div>
                 <div class="meta-row">放款金額合計　　　 <strong id="total-loan">—</strong> 元</div>
-                <div class="meta-row">
-                    應收利息(可選填)
+                <div class="meta-row interest-row">
+                    <span>應收利息</span>
                     <input type="number" class="interest-input" id="total-interest" value="0" min="0" step="100" oninput="calcMargin()">
-                    元
+                    <span>元</span>
+                    <span class="interest-est-badge" id="interest-est-badge" style="display:none;cursor:pointer;"
+                          onclick="applyEstimatedInterest()" title="點擊套用估算值">
+                        估算 <span id="interest-est-val">0</span>
+                    </span>
+                </div>
+                <div class="meta-row">
+                    <label class="interest-toggle">
+                        <input type="checkbox" id="include-interest-toggle" onchange="onIncludeInterestToggle()">
+                        <span>✓ 將應收利息計入維持率分母</span>
+                    </label>
                 </div>
                 <div class="meta-row">放款＋利息合計　　 <strong id="total-denom">—</strong> 元</div>
             </div>
@@ -702,6 +757,9 @@
                 <button class="btn btn-secondary" onclick="toggleAll(true)">☑ 全選</button>
                 <button class="btn btn-secondary" onclick="toggleAll(false)">☐ 全不選</button>
                 <button class="btn btn-primary" id="btn-save" onclick="saveAll()">💾 儲存目前數值</button>
+                <button class="btn btn-secondary" onclick="exportBackup()">📤 匯出備份</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('import-file').click()">📥 匯入備份</button>
+                <input type="file" id="import-file" accept=".json" style="display:none;" onchange="importBackup(event)">
                 <button class="btn btn-secondary" onclick="resetAll()">↺ 還原初始值</button>
             </div>
         </div>
@@ -714,8 +772,13 @@
             單筆維持率 = 該股市值 ÷(該股放款金額 ＋ 應收利息)× 100%<br>
             <strong>勾選框:</strong>取消勾選的股票會被排除在計算外,但保留所有數值。<br>
             <strong>📌 跟現價 / ✏️ 手動:</strong>「跟現價」時模擬股價 = 現價(自動同步);切「手動」才能模擬下跌情境。<br>
-            <strong>📋 分筆借款:</strong>同一檔分多次借款時(如每天限額 10 萬),展開「分筆明細」分別輸入每筆的股數和借款。
-            每筆的單筆維持率獨立計算(該筆股數 × 股價 ÷ 該筆借款),卡片顯示其中<u>最低</u>的一筆作為主要警示。<br>
+            <strong>📋 分筆借款:</strong>同一檔分多次借款時(如每天限額 10 萬),展開「分筆明細」分別輸入每筆的<u>股數、借款日、借款金額</u>。
+            每筆的單筆維持率獨立計算,卡片顯示其中<u>最低</u>的一筆作為主要警示。<br>
+            <strong>💰 利息估算:</strong>每檔填入年利率(%)後,系統會自動以「借款金額 × 年利率 ÷ 365 × 累計天數」算出至今累計利息。
+            上方「應收利息」可手動填寫,或點藍色「估算 XXX」徽章一鍵套用。
+            勾選「✓ 將應收利息計入維持率分母」會把利息算進維持率分母(更貼近證金實際公式)。<br>
+            <strong>📤 匯出 / 📥 匯入備份:</strong>建議在重要資料填好後匯出一份 JSON 檔保存。
+            換電腦、瀏覽器或不小心清掉資料時,點「匯入備份」就能還原。<br>
             ⚠️ <strong>追繳線約 130%、強制平倉線約 120%</strong>(請以元大證金實際規定為準)。
         </div>
     </div>
@@ -944,7 +1007,7 @@ function confirmAddStock() {
     state[codeRaw] = {
         price: initPrice, shares: 0, loan: 0,
         included: true, priceMode: 'manual',
-        tranches: [], expanded: false,
+        tranches: [], expanded: false, rate: 0,
     };
     plData[codeRaw] = { shares: 0, cost: 0, price: 0 };
 
@@ -981,6 +1044,8 @@ function rebuildAll() {
         setSliderVal(d.code, Math.max(d.minPrice, Math.min(d.maxPrice, s.price)));
         document.getElementById(`shares-${d.code}`).value = s.shares > 0 ? s.shares : '';
         document.getElementById(`loan-${d.code}`).value   = s.loan   > 0 ? s.loan   : '';
+        const rateEl = document.getElementById(`rate-${d.code}`);
+        if (rateEl && s.rate > 0) rateEl.value = s.rate;
         applyIncludeUI(d.code);
         applyPriceModeUI(d.code);
         renderTrancheList(d.code);
@@ -1145,10 +1210,53 @@ DEFS.forEach(d => {
         loan: d.initLoan,
         included: true,
         priceMode: 'manual',  // 'follow' = 跟現價, 'manual' = 手動
-        tranches: [],         // 分筆借款明細 [{shares, loan}, ...] 空陣列 = 不啟用分筆
+        tranches: [],         // 分筆借款明細 [{shares, loan, date}, ...]
         expanded: false,      // 卡片是否展開分筆明細
+        rate: 0,              // 該檔年利率(%),0 表示未設定
     };
 });
+
+// 全局:是否把估算利息計入維持率
+let includeInterestInRatio = false;
+
+// ── 日期/利息輔助 ─────────────────────────────────────
+function todayISO() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+function daysBetween(fromISO, toISO) {
+    if (!fromISO) return 0;
+    const from = new Date(fromISO + 'T00:00:00');
+    const to   = new Date((toISO || todayISO()) + 'T00:00:00');
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) return 0;
+    const ms = to - from;
+    if (ms < 0) return 0;
+    return Math.floor(ms / 86400000);
+}
+function calcTrancheInterest(tranche, ratePct) {
+    const loan = parseFloat(tranche.loan) || 0;
+    if (loan <= 0 || !ratePct) return 0;
+    const days = daysBetween(tranche.date, todayISO());
+    return loan * (ratePct / 100) * days / 365;
+}
+function getStockInterest(code) {
+    const s = state[code];
+    if (!s.rate || s.rate <= 0) return 0;
+    if (s.tranches && s.tranches.length > 0) {
+        return s.tranches.reduce((sum, t) => sum + calcTrancheInterest(t, s.rate), 0);
+    }
+    return 0;  // 沒分筆就沒有日期可算
+}
+function getTotalEstimatedInterest() {
+    let total = 0;
+    DEFS.forEach(d => {
+        if (state[d.code].included) total += getStockInterest(d.code);
+    });
+    return total;
+}
 
 // ── 分筆計算輔助函式 ─────────────────────────────────────
 // 取得「該檔總股數」:有 tranches 用加總,否則用 shares
@@ -1242,16 +1350,29 @@ function buildCards() {
                 </div>
                 <div class="tranche-block" id="tranche-block-${d.code}">
                     <div class="tranche-hint">
-                        每筆借款各自配對「該筆買進的股數」,單筆維持率獨立計算。
+                        每筆借款各自配對「該筆買進的股數」與「借款日」,單筆維持率獨立計算,利息累計到今日。
+                    </div>
+                    <div class="rate-row">
+                        <span class="rate-label">💰 年利率</span>
+                        <div class="rate-input-group">
+                            <input type="number" class="rate-input" id="rate-${d.code}"
+                                placeholder="6.435" min="0" max="20" step="0.001"
+                                oninput="onRateInput('${d.code}')">
+                            <span style="font-size:12px;color:var(--text-muted)">%</span>
+                        </div>
                     </div>
                     <div class="tranche-headers">
-                        <span>#</span><span>股數</span><span>借款 (元)</span><span>單筆%</span><span></span>
+                        <span>#</span><span>借款日</span><span>股數</span><span>借款 (元)</span><span>單筆%</span><span></span>
                     </div>
                     <div class="tranche-list" id="tranche-list-${d.code}"></div>
                     <button class="tranche-add-btn" onclick="addTranche('${d.code}')">＋ 新增一筆</button>
                     <div class="tranche-summary-row">
                         <span>小計</span>
                         <span><strong id="tranche-sum-shares-${d.code}">0</strong> 股 / <strong id="tranche-sum-loan-${d.code}">0</strong> 元</span>
+                    </div>
+                    <div class="tranche-summary-row" style="display:none;">
+                        <span>📊 估算利息(累計至今日)</span>
+                        <span><strong id="tranche-sum-interest-${d.code}">0</strong> 元</span>
                     </div>
                 </div>
 
@@ -1394,7 +1515,7 @@ function toggleTranches(code) {
     applyTrancheUI(code);
 }
 function addTranche(code) {
-    state[code].tranches.push({ shares: 0, loan: 0 });
+    state[code].tranches.push({ shares: 0, loan: 0, date: todayISO() });
     state[code].expanded = true;
     renderTrancheList(code);
     applyTrancheUI(code);
@@ -1409,10 +1530,36 @@ function removeTranche(code, idx) {
     calcMargin();
 }
 function onTrancheInput(code, idx, field, val) {
-    const v = parseFloat(val) || 0;
-    state[code].tranches[idx][field] = v;
+    if (field === 'date') {
+        state[code].tranches[idx].date = val || '';
+    } else {
+        const v = parseFloat(val) || 0;
+        state[code].tranches[idx][field] = v;
+    }
     syncTrancheTotals(code);
     updateTrancheRatios(code);
+    calcMargin();
+}
+
+// 年利率變更
+function onRateInput(code) {
+    const v = parseFloat(document.getElementById(`rate-${code}`).value) || 0;
+    state[code].rate = v;
+    updateTrancheRatios(code);
+    syncTrancheTotals(code);
+    calcMargin();
+}
+
+// 切換「是否將應收利息計入維持率」
+function onIncludeInterestToggle() {
+    includeInterestInRatio = document.getElementById('include-interest-toggle').checked;
+    calcMargin();
+}
+
+// 一鍵套用估算利息到「應收利息」輸入框
+function applyEstimatedInterest() {
+    const est = getTotalEstimatedInterest();
+    document.getElementById('total-interest').value = Math.round(est);
     calcMargin();
 }
 
@@ -1431,6 +1578,19 @@ function syncTrancheTotals(code) {
 
     document.getElementById(`tranche-sum-shares-${code}`).textContent = fmt(totalShares);
     document.getElementById(`tranche-sum-loan-${code}`).textContent   = fmt(totalLoan);
+
+    // 估算利息小計
+    const intEl = document.getElementById(`tranche-sum-interest-${code}`);
+    if (intEl) {
+        const intVal = getStockInterest(code);
+        if (intVal > 0) {
+            intEl.textContent = fmt(intVal);
+            intEl.parentElement.style.display = '';
+        } else {
+            intEl.parentElement.style.display = state[code].rate > 0 ? '' : 'none';
+            intEl.textContent = '0';
+        }
+    }
 }
 
 // 重新渲染分筆列表
@@ -1443,6 +1603,9 @@ function renderTrancheList(code) {
         row.className = 'tranche-row';
         row.innerHTML = `
             <div class="tranche-label">#${idx+1}</div>
+            <input type="date" class="tranche-date" title="借款日"
+                value="${t.date || ''}"
+                onchange="onTrancheInput('${code}', ${idx}, 'date', this.value)">
             <input type="number" class="tranche-input" placeholder="股數" min="0" step="1000"
                 value="${t.shares > 0 ? t.shares : ''}"
                 oninput="onTrancheInput('${code}', ${idx}, 'shares', this.value)">
@@ -1461,8 +1624,8 @@ function updateTrancheRatios(code) {
     const s = state[code];
     if (!s.tranches || s.tranches.length === 0) return;
     const price = s.price;
-    const interest = parseFloat(document.getElementById('total-interest').value) || 0;
-    // 應收利息以「該筆借款佔總借款比例」分攤(避免每筆都重複算)
+    const interestInput = parseFloat(document.getElementById('total-interest').value) || 0;
+    const interest = includeInterestInRatio ? interestInput : 0;
     const totalLoan = getTotalLoan(code);
 
     s.tranches.forEach((t, idx) => {
@@ -1635,11 +1798,12 @@ function statusText(r) {
 function calcMargin() {
     let totalCollateral = 0, totalLoan = 0;
     let includedCount = 0, totalCount = DEFS.length;
-    const interest = parseFloat(document.getElementById('total-interest').value) || 0;
+    const interestInput = parseFloat(document.getElementById('total-interest').value) || 0;
+    // 只有開啟「計入維持率」時,利息才進入分母
+    const interestForRatio = includeInterestInRatio ? interestInput : 0;
 
     DEFS.forEach(d => {
         const s        = state[d.code];
-        // 啟用分筆時,用 tranches 加總作為 shares/loan
         const totalSh  = getTotalShares(d.code);
         const totalLn  = getTotalLoan(d.code);
         const mktVal   = totalSh * s.price;
@@ -1658,29 +1822,27 @@ function calcMargin() {
         mktEl.textContent = mktVal > 0 ? fmt(mktVal) + ' 元' : '—';
         if (sublabelEl) sublabelEl.textContent = '';
 
-        // 計算「卡片顯示的單筆維持率」:
-        // 啟用分筆 → 顯示最低單筆;否則用合計值
+        // 計算「卡片顯示的單筆維持率」
         let mainRatio = null;
-        let isMin = false;  // 標示是否為「多筆中的最低」
+        let isMin = false;
         const hasMulti = hasTranches(d.code) && s.tranches.length > 0;
 
         if (hasMulti && totalLn > 0) {
-            // 找出有借款的筆中,維持率最低的那筆
             const ratios = s.tranches
                 .filter(t => (parseFloat(t.loan) || 0) > 0)
                 .map(t => {
                     const sh = parseFloat(t.shares) || 0;
                     const ln = parseFloat(t.loan)   || 0;
                     const mkt = sh * s.price;
-                    const allocInt = totalLn > 0 ? (interest * ln / totalLn) : 0;
+                    const allocInt = totalLn > 0 ? (interestForRatio * ln / totalLn) : 0;
                     return mkt / (ln + allocInt) * 100;
                 });
             if (ratios.length > 0) {
                 mainRatio = Math.min(...ratios);
-                isMin = ratios.length > 1;  // 只有 >1 筆才標「最低」
+                isMin = ratios.length > 1;
             }
         } else if (totalLn > 0) {
-            mainRatio = mktVal / (totalLn + interest) * 100;
+            mainRatio = mktVal / (totalLn + interestForRatio) * 100;
         }
 
         if (!s.included) {
@@ -1719,13 +1881,11 @@ function calcMargin() {
             statusEl.textContent = '— 請輸入股數與借款';
         }
 
-        // 更新分筆列表的單筆維持率
         if (hasMulti) updateTrancheRatios(d.code);
-
         updateDiff(d.code);
     });
 
-    const totalDenom = totalLoan + interest;
+    const totalDenom = totalLoan + interestForRatio;
     const overall    = totalDenom > 0 ? totalCollateral / totalDenom * 100 : 0;
     const overallEl  = document.getElementById('overall-ratio');
     overallEl.textContent = totalDenom > 0 ? overall.toFixed(2) + '%' : '—';
@@ -1737,6 +1897,18 @@ function calcMargin() {
     document.getElementById('total-denom').textContent      = totalDenom > 0 ? fmt(totalDenom) : '—';
     document.getElementById('included-count').textContent   = `已納入 ${includedCount} / ${totalCount} 檔`;
 
+    // 顯示估算利息徽章
+    const totalEstInt = getTotalEstimatedInterest();
+    const badgeEl  = document.getElementById('interest-est-badge');
+    const badgeVal = document.getElementById('interest-est-val');
+    if (totalEstInt > 0) {
+        badgeVal.textContent = fmt(Math.round(totalEstInt));
+        badgeEl.style.display = '';
+        badgeEl.title = '點擊套用到上方輸入框';
+    } else {
+        badgeEl.style.display = 'none';
+    }
+
     const pct  = Math.min(overall / 300 * 100, 100);
     const fill = document.getElementById('bar-fill');
     fill.style.width      = (totalDenom > 0 ? pct : 0) + '%';
@@ -1744,10 +1916,17 @@ function calcMargin() {
 }
 
 // ── 儲存 / 還原 (維持率頁) ──────────────────────────────────
-const STORAGE_KEY = 'margin_sim_v8';
+// 注意:STORAGE_KEY 之後不再升級。新欄位用 typeof / Array.isArray 等防呆檢查
+// 來處理舊版資料缺欄位的情況,讓使用者不會因為功能更新而資料消失。
+const STORAGE_KEY = 'margin_sim_v9';
+// 舊版 key 列表(向下相容用,有資料就讀)
+const LEGACY_KEYS = ['margin_sim_v8','margin_sim_v7','margin_sim_v6','margin_sim_v5','margin_sim_v4','margin_sim_v3','margin_sim_v2','margin_sim_v1'];
 
 function saveAll() {
-    const data = { interest: parseFloat(document.getElementById('total-interest').value) || 0 };
+    const data = {
+        interest: parseFloat(document.getElementById('total-interest').value) || 0,
+        includeInterestInRatio,
+    };
     DEFS.forEach(d => {
         const s = state[d.code];
         data[d.code] = {
@@ -1759,9 +1938,10 @@ function saveAll() {
             priceMode: s.priceMode,
             tranches:  s.tranches || [],
             expanded:  s.expanded || false,
+            rate:      s.rate || 0,
         };
     });
-    ['margin_sim_v1','margin_sim_v2','margin_sim_v3','margin_sim_v4','margin_sim_v5','margin_sim_v6','margin_sim_v7'].forEach(k => localStorage.removeItem(k));
+    // 註:不再清除舊版 key,以保留歷史備份。如需手動清理可開 F12 → Application → Local Storage
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 
     const btn = document.getElementById('btn-save');
@@ -1770,15 +1950,89 @@ function saveAll() {
     setTimeout(() => { btn.innerHTML = '💾 儲存目前數值'; btn.disabled = false; }, 1500);
 }
 
+// ── 匯出備份 (下載 JSON 檔) ─────────────────────────────────
+function exportBackup() {
+    const backup = {
+        format: 'portfolio_dashboard_backup',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        margin: localStorage.getItem(STORAGE_KEY)        // 維持率頁
+            ? JSON.parse(localStorage.getItem(STORAGE_KEY)) : null,
+        custom: localStorage.getItem(CUSTOM_KEY)          // 自訂股票
+            ? JSON.parse(localStorage.getItem(CUSTOM_KEY)) : null,
+        pl: localStorage.getItem(PL_KEY)                  // 損益頁
+            ? JSON.parse(localStorage.getItem(PL_KEY)) : null,
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const now = new Date();
+    const stamp = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+    a.download = `portfolio_backup_${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showBanner(`已匯出備份檔 <strong>${a.download}</strong>`, 'success');
+}
+
+// ── 匯入備份 ────────────────────────────────────────────────
+function importBackup(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const backup = JSON.parse(e.target.result);
+            if (backup.format !== 'portfolio_dashboard_backup') {
+                throw new Error('檔案格式不符');
+            }
+            if (!confirm('確認要匯入備份嗎?\n目前的所有資料將被覆蓋(無法復原)。')) {
+                event.target.value = '';
+                return;
+            }
+
+            // 寫回 localStorage
+            if (backup.margin) localStorage.setItem(STORAGE_KEY, JSON.stringify(backup.margin));
+            if (backup.custom) localStorage.setItem(CUSTOM_KEY, JSON.stringify(backup.custom));
+            if (backup.pl)     localStorage.setItem(PL_KEY,     JSON.stringify(backup.pl));
+
+            showBanner(`已匯入備份(匯出時間:${backup.exportedAt || '未知'}),頁面即將重新整理...`, 'success');
+            setTimeout(() => location.reload(), 1200);
+        } catch (err) {
+            showBanner(`匯入失敗:${err.message}。請確認檔案是本工具匯出的備份。`, 'danger');
+        } finally {
+            event.target.value = '';  // 清空,讓同名檔可重複匯入
+        }
+    };
+    reader.readAsText(file);
+}
 function loadSaved() {
     try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        // 優先讀主 key,沒有的話依序嘗試舊版 key(向下相容)
+        let raw = localStorage.getItem(STORAGE_KEY);
+        let fromLegacy = null;
+        if (!raw) {
+            for (const k of LEGACY_KEYS) {
+                const v = localStorage.getItem(k);
+                if (v) { raw = v; fromLegacy = k; break; }
+            }
+        }
         if (!raw) return false;
         const data = JSON.parse(raw);
         if (!data || typeof data !== 'object') return false;
 
+        if (fromLegacy) {
+            console.log(`[相容模式] 從舊版 ${fromLegacy} 還原資料`);
+        }
+
         if (typeof data.interest === 'number') {
             document.getElementById('total-interest').value = data.interest;
+        }
+        if (typeof data.includeInterestInRatio === 'boolean') {
+            includeInterestInRatio = data.includeInterestInRatio;
+            document.getElementById('include-interest-toggle').checked = includeInterestInRatio;
         }
         DEFS.forEach(d => {
             const s = data[d.code];
@@ -1792,9 +2046,11 @@ function loadSaved() {
                 state[d.code].tranches = s.tranches.map(t => ({
                     shares: parseFloat(t.shares) || 0,
                     loan:   parseFloat(t.loan)   || 0,
+                    date:   t.date || '',
                 }));
             }
             if (typeof s.expanded === 'boolean') state[d.code].expanded = s.expanded;
+            if (typeof s.rate === 'number') state[d.code].rate = s.rate;
         });
         return true;
     } catch(e) {
@@ -1808,7 +2064,7 @@ function resetAll() {
         state[d.code] = {
             price: d.initPrice, shares: d.initShares, loan: d.initLoan,
             included: true, priceMode: 'manual',
-            tranches: [], expanded: false,
+            tranches: [], expanded: false, rate: 0,
         };
         document.getElementById(`price-${d.code}`).value    = d.initPrice.toFixed(2);
         setSliderVal(d.code, d.initPrice);
@@ -1817,6 +2073,8 @@ function resetAll() {
         document.getElementById(`curprice-${d.code}`).value = '';
         document.getElementById(`curprice-meta-${d.code}`).textContent = '';
         document.getElementById(`curprice-meta-${d.code}`).className   = 'cur-price-meta';
+        const rateEl = document.getElementById(`rate-${d.code}`);
+        if (rateEl) rateEl.value = '';
         applyIncludeUI(d.code);
         applyPriceModeUI(d.code);
         renderTrancheList(d.code);
@@ -1824,6 +2082,8 @@ function resetAll() {
         syncTrancheTotals(d.code);
     });
     document.getElementById('total-interest').value = 0;
+    includeInterestInRatio = false;
+    document.getElementById('include-interest-toggle').checked = false;
     hideBanner();
     calcMargin();
 }
@@ -2071,6 +2331,8 @@ window.onload = () => {
         setSliderVal(d.code, Math.max(d.minPrice, Math.min(d.maxPrice, s.price)));
         document.getElementById(`shares-${d.code}`).value = s.shares > 0 ? s.shares : '';
         document.getElementById(`loan-${d.code}`).value   = s.loan   > 0 ? s.loan   : '';
+        const rateEl = document.getElementById(`rate-${d.code}`);
+        if (rateEl && s.rate > 0) rateEl.value = s.rate;
         applyIncludeUI(d.code);
         applyPriceModeUI(d.code);
         renderTrancheList(d.code);
