@@ -332,7 +332,7 @@
         .tranche-block.expanded { display: flex; }
         .tranche-list { display: flex; flex-direction: column; gap: 6px; }
         .tranche-row {
-            display: grid; grid-template-columns: 24px 100px 1fr 1fr 50px 20px;
+            display: grid; grid-template-columns: 24px 100px 1fr 1fr 90px 20px;
             gap: 5px; align-items: center;
             padding: 6px 8px; background: var(--surface); border: 1px solid var(--border-soft);
             border-radius: 5px;
@@ -363,6 +363,19 @@
         .tranche-ratio.warning { color: var(--warning); }
         .tranche-ratio.danger  { color: var(--danger); }
         .tranche-ratio.muted   { color: var(--text-dim); }
+
+        /* 單筆%欄位 cell:上行顯示比率、下行顯示小字利息 */
+        .tranche-ratio-cell {
+            display: flex; flex-direction: column; align-items: flex-end;
+            gap: 1px; min-width: 0;
+        }
+        .tranche-interest {
+            font-family: 'JetBrains Mono', monospace; font-size: 10px;
+            color: var(--info);
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .tranche-interest.muted { color: var(--text-dim); }
         .tranche-del-btn {
             background: transparent; border: none; cursor: pointer;
             color: var(--text-dim); font-size: 14px; padding: 0;
@@ -377,7 +390,7 @@
         }
         .tranche-add-btn:hover { background: var(--bg2); color: var(--accent); border-color: var(--accent); }
         .tranche-headers {
-            display: grid; grid-template-columns: 24px 100px 1fr 1fr 50px 20px;
+            display: grid; grid-template-columns: 24px 100px 1fr 1fr 90px 20px;
             gap: 5px; padding: 0 8px;
             font-size: 10px; color: var(--text-dim); letter-spacing: 0.3px;
         }
@@ -1612,7 +1625,10 @@ function renderTrancheList(code) {
             <input type="number" class="tranche-input" placeholder="借款" min="0" step="10000"
                 value="${t.loan > 0 ? t.loan : ''}"
                 oninput="onTrancheInput('${code}', ${idx}, 'loan', this.value)">
-            <span class="tranche-ratio" id="tranche-ratio-${code}-${idx}">—</span>
+            <div class="tranche-ratio-cell">
+                <span class="tranche-ratio" id="tranche-ratio-${code}-${idx}">—</span>
+                <span class="tranche-interest muted" id="tranche-int-${code}-${idx}"></span>
+            </div>
             <button class="tranche-del-btn" onclick="removeTranche('${code}', ${idx})" title="刪除此筆">✕</button>
         `;
         listEl.appendChild(row);
@@ -1627,13 +1643,33 @@ function updateTrancheRatios(code) {
     const interestInput = parseFloat(document.getElementById('total-interest').value) || 0;
     const interest = includeInterestInRatio ? interestInput : 0;
     const totalLoan = getTotalLoan(code);
+    const rate = s.rate || 0;
 
     s.tranches.forEach((t, idx) => {
-        const el = document.getElementById(`tranche-ratio-${code}-${idx}`);
+        const el    = document.getElementById(`tranche-ratio-${code}-${idx}`);
+        const intEl = document.getElementById(`tranche-int-${code}-${idx}`);
         if (!el) return;
         const sh   = parseFloat(t.shares) || 0;
         const ln   = parseFloat(t.loan)   || 0;
         const mkt  = sh * price;
+
+        // 該筆估算利息(累計到今日)
+        let estInt = 0;
+        if (intEl) {
+            estInt = calcTrancheInterest(t, rate);
+            if (rate > 0 && estInt > 0) {
+                const days = daysBetween(t.date, todayISO());
+                intEl.textContent = `息 ${fmt(Math.round(estInt))} / ${days}天`;
+                intEl.className = 'tranche-interest';
+            } else if (rate > 0) {
+                intEl.textContent = ln > 0 ? '請設借款日' : '';
+                intEl.className = 'tranche-interest muted';
+            } else {
+                intEl.textContent = ln > 0 ? '請設年利率' : '';
+                intEl.className = 'tranche-interest muted';
+            }
+        }
+
         if (ln <= 0) {
             el.textContent = '—'; el.className = 'tranche-ratio muted';
             return;
