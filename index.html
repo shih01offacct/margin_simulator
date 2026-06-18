@@ -1674,8 +1674,9 @@ function updateTrancheRatios(code) {
             el.textContent = '—'; el.className = 'tranche-ratio muted';
             return;
         }
-        const allocatedInt = totalLoan > 0 ? (interest * ln / totalLoan) : 0;
-        const r = mkt / (ln + allocatedInt) * 100;
+        // 用「該筆自己的利息」而非按比例分攤全局應收利息
+        const ownInt = includeInterestInRatio ? estInt : 0;
+        const r = mkt / (ln + ownInt) * 100;
         el.textContent = r.toFixed(1) + '%';
         if (r <= 130)      el.className = 'tranche-ratio danger';
         else if (r <= 166) el.className = 'tranche-ratio warning';
@@ -1870,8 +1871,9 @@ function calcMargin() {
                     const sh = parseFloat(t.shares) || 0;
                     const ln = parseFloat(t.loan)   || 0;
                     const mkt = sh * s.price;
-                    const allocInt = totalLn > 0 ? (interestForRatio * ln / totalLn) : 0;
-                    return mkt / (ln + allocInt) * 100;
+                    // 用「該筆自己的利息」而非按比例分攤全局應收利息
+                    const ownInt = includeInterestInRatio ? calcTrancheInterest(t, s.rate || 0) : 0;
+                    return mkt / (ln + ownInt) * 100;
                 });
             if (ratios.length > 0) {
                 mainRatio = Math.min(...ratios);
