@@ -1116,27 +1116,19 @@ function switchTab(name) {
 }
 
 // ════════════════════════════════════════════════════════════
-//  共用:股價抓取(多來源 fallback)
-//  1. Yahoo Finance(直連 / 多個 CORS 代理)→ 盤中可拿到即時價
-//  2. 證交所 / 櫃買中心 官方 OpenAPI(有開 CORS,穩定)→ 最近一個交易日收盤價
-//  兩路同時發出,Yahoo 成功就用 Yahoo,否則用官方收盤價
+//  共用:股價抓取
+//  1. prices.json(同一個 repo,由 GitHub Actions 每個交易日收盤後
+//     從證交所/櫃買中心抓好)→ 同網域,不受 CORS 限制,最穩定
+//  2. Yahoo Finance 直連 → 只有在本機用 CORS 擴充套件開啟時才會成功,
+//     成功時可拿到盤中即時價;失敗就安靜略過
 // ════════════════════════════════════════════════════════════
+const PRICES_JSON_URL = 'prices.json';   // 與 index.html 同一層
 const FETCH_TIMEOUT_MS = 8000;
 
 function fetchWithTimeout(url, ms = FETCH_TIMEOUT_MS) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), ms);
-    return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
-}
-
-function makeProxies(url) {
-    const enc = encodeURIComponent(url);
-    return [
-        { label: '直連',           url },
-        { label: 'corsproxy.io',   url: `https://corsproxy.io/?url=${enc}` },
-        { label: 'allorigins.win', url: `https://api.allorigins.win/raw?url=${enc}` },
-        { label: 'codetabs',       url: `https://api.codetabs.com/v1/proxy?quest=${enc}` },
-    ];
+    return fetch(url, { signal: ctrl.signal, cache: 'no-store' }).finally(() => clearTimeout(timer));
 }
 
 function getYahooSymbol(code) {
@@ -1145,91 +1137,70 @@ function getYahooSymbol(code) {
     return `${code}${suffix}`;
 }
 
-// ── 來源 1:Yahoo(單檔,多代理輪詢) ─────────────────────
-async function fetchYahooOne(code) {
-    const symbol = getYahooSymbol(code);
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+// ── 來源 1:prices.json(快取 5 分鐘) ───────────────────────
+let pricesJsonCache = { at: 0, json: null };
 
-    for (const p of makeProxies(url)) {
-        try {
-            const res = await fetchWithTimeout(p.url);
-            if (!res.ok) continue;
-            const json = await res.json();
-            const meta = json?.chart?.result?.[0]?.meta;
-            const price = meta?.regularMarketPrice;
-            if (price == null) continue;
-            return {
-                price: parseFloat(price),
-                isClose: meta.marketState !== 'REGULAR',
-                source: `Yahoo(${p.label})`,
-                time: '', date: '',
-            };
-        } catch (e) {
-            console.warn(`[Yahoo ${code}] ${p.label} 失敗:`, e.message);
-        }
-    }
-    return null;
+async function loadPricesJson() {
+    if (pricesJsonCache.json && Date.now() - pricesJsonCache.at < 5 * 60 * 1000) return pricesJsonCache.json;
+    const res = await fetchWithTimeout(`${PRICES_JSON_URL}?t=${Date.now()}`, 15000);
+    if (!res.ok) throw new Error(`prices.json HTTP ${res.status}`);
+    const json = await res.json();
+    if (!json || !json.data) throw new Error('prices.json 格式錯誤');
+    pricesJsonCache = { at: Date.now(), json };
+    return json;
 }
 
-// ── 來源 2:證交所 + 櫃買中心 官方 OpenAPI(整表一次抓,快取 5 分鐘) ──
-let officialCache = { at: 0, map: null };
-
-function rocDateToISO(s) {
-    // '1150903' → '20260903'
-    if (!s || s.length < 7) return '';
-    return String(parseInt(s.substring(0, 3), 10) + 1911) + s.substring(3);
-}
-
-async function loadOfficialQuotes() {
-    if (officialCache.map && Date.now() - officialCache.at < 5 * 60 * 1000) return officialCache.map;
-
-    const map = {};
-    const tasks = [
-        // 上市(TWSE)
-        fetchWithTimeout('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL', 15000)
-            .then(r => r.ok ? r.json() : [])
-            .then(rows => rows.forEach(r => {
-                const price = parseFloat(r.ClosingPrice);
-                if (r.Code && !isNaN(price)) map[r.Code] = { price, date: rocDateToISO(r.Date), source: '證交所' };
-            }))
-            .catch(e => console.warn('[TWSE] 失敗:', e.message)),
-        // 上櫃(TPEx)
-        fetchWithTimeout('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes', 15000)
-            .then(r => r.ok ? r.json() : [])
-            .then(rows => rows.forEach(r => {
-                const price = parseFloat(r.Close);
-                const code = r.SecuritiesCompanyCode;
-                if (code && !isNaN(price) && !map[code]) map[code] = { price, date: rocDateToISO(r.Date), source: '櫃買中心' };
-            }))
-            .catch(e => console.warn('[TPEx] 失敗:', e.message)),
-    ];
-    await Promise.all(tasks);
-
-    if (Object.keys(map).length > 0) officialCache = { at: Date.now(), map };
-    return map;
-}
-
-async function fetchOfficialMany(codes) {
-    const map = await loadOfficialQuotes();
+async function fetchFromPricesJson(codes) {
+    const json = await loadPricesJson();
     const out = {};
     codes.forEach(c => {
-        const q = map[c];
-        if (q) out[c] = { price: q.price, isClose: true, source: q.source, date: q.date, time: '13:30' };
+        const q = json.data[c];
+        if (q && q.p != null) {
+            out[c] = {
+                price: parseFloat(q.p),
+                isClose: true,
+                source: q.m === 'tpex' ? '櫃買中心' : '證交所',
+                date: q.d || '',
+                time: '13:30',
+            };
+        }
     });
     return out;
 }
 
-// 統一入口:兩路同時發出,Yahoo 優先(有即時價),官方 API 補漏
+// ── 來源 2:Yahoo 直連(通常會被 CORS 擋,僅作備援) ──────────
+async function fetchYahooOne(code) {
+    const symbol = getYahooSymbol(code);
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+    try {
+        const res = await fetchWithTimeout(url, 5000);
+        if (!res.ok) return null;
+        const json = await res.json();
+        const meta = json?.chart?.result?.[0]?.meta;
+        const price = meta?.regularMarketPrice;
+        if (price == null) return null;
+        return {
+            price: parseFloat(price),
+            isClose: meta.marketState !== 'REGULAR',
+            source: 'Yahoo',
+            time: '', date: '',
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
+// 統一入口:prices.json 為主;Yahoo 若剛好能連(盤中即時價)則優先採用
 async function fetchPrices(codes) {
-    const [yahooList, official] = await Promise.all([
+    const [fromJson, yahooList] = await Promise.all([
+        fetchFromPricesJson(codes).catch(e => { console.warn('[prices.json] 失敗:', e.message); return {}; }),
         Promise.all(codes.map(c => fetchYahooOne(c))),
-        fetchOfficialMany(codes).catch(() => ({})),
     ]);
 
     const out = {};
     let firstSource = null;
     codes.forEach((c, i) => {
-        const info = yahooList[i] || official[c] || null;
+        const info = yahooList[i] || fromJson[c] || null;
         if (info) {
             out[c] = info;
             if (!firstSource) firstSource = info.source;
@@ -1238,7 +1209,7 @@ async function fetchPrices(codes) {
     if (Object.keys(out).length === 0) {
         throw new Error('全部抓取失敗');
     }
-    return { result: out, source: firstSource || 'Yahoo' };
+    return { result: out, source: firstSource || '證交所' };
 }
 
 // Banner
@@ -1254,8 +1225,8 @@ function showBanner(text, level = 'info') {
 function hideBanner() { document.getElementById('fetch-banner').classList.add('hidden'); }
 function showCorsHint() {
     showBanner(
-        `所有來源(Yahoo、證交所、櫃買中心)都無法連線。可能原因:網路不穩、資料來源暫時無回應、或瀏覽器擴充套件擋住請求。` +
-        `請稍後再試,或手動輸入股價。`,
+        `無法取得股價。請確認 repo 裡有 <strong>prices.json</strong>(由 GitHub Actions「更新股價」自動產生,` +
+        `第一次需到 GitHub 的 Actions 頁面手動 Run workflow 一次),或稍後再試、手動輸入股價。`,
         'danger'
     );
 }
