@@ -2,8 +2,9 @@ name: 更新股價 prices.json
 
 on:
   schedule:
-    # 台灣時間 週一~五 15:30 與 19:00(UTC 07:30 / 11:00)各抓一次
-    - cron: '30 7 * * 1-5'
+    # 台灣時間 週一~五 14:30 / 16:00 / 19:00(UTC 06:30 / 08:00 / 11:00)各抓一次
+    - cron: '30 6 * * 1-5'
+    - cron: '0 8 * * 1-5'
     - cron: '0 11 * * 1-5'
   workflow_dispatch:   # 也可在 Actions 頁面手動按「Run workflow」
 
